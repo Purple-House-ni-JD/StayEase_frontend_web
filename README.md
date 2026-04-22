@@ -1,4 +1,3 @@
-# StayEase_frontend_web
 # StayEase — Luxury Hotel Booking App
 
 A full-featured hotel reservation UI built with **React 18 + Tailwind CSS v4 + Vite**.
