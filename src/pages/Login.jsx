@@ -1,4 +1,3 @@
-// src/pages/Login.jsx  — replace your existing file with this
 import { useState } from "react";
 import { C } from "../constants";
 import { GBar, Logo } from "../components/UI";
@@ -6,7 +5,6 @@ import { useAuth } from "../context/AuthContext";
 
 const Login = ({ setPage }) => {
   const { login } = useAuth();
-  const [role, setRole] = useState("guest");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,10 +19,10 @@ const Login = ({ setPage }) => {
     setLoading(true);
     try {
       const user = await login(email, pw);
-      // Use actual role from backend, not the toggle
-      setPage(user.role === "admin" ? "adminDash" : "userDash");
+      // Automatically routes based on actual database role, no toggle needed
+      const isAdmin = user.is_staff || user.is_superuser;
+      setPage(isAdmin ? "adminDash" : "userDash");
     } catch (err) {
-      // Backend returns { detail: "..." } or { email: [...] }
       const msg =
         err?.detail ||
         err?.non_field_errors?.[0] ||
@@ -172,16 +170,6 @@ const Login = ({ setPage }) => {
             </div>
           ))}
         </div>
-        <div
-          className="sans"
-          style={{
-            color: "rgba(255,255,255,.2)",
-            fontSize: ".7rem",
-            textAlign: "center",
-          }}
-        >
-          © 2026 STAYEASE LUXURY GROUP
-        </div>
       </div>
 
       {/* Right panel */}
@@ -213,46 +201,6 @@ const Login = ({ setPage }) => {
             Enter your credentials to continue
           </p>
 
-          {/* Role toggle — visual only, actual role comes from backend */}
-          <div
-            style={{
-              display: "flex",
-              background: C.grayXL,
-              borderRadius: 50,
-              padding: 4,
-              marginBottom: 26,
-              gap: 4,
-            }}
-          >
-            {[
-              ["guest", "🛎 Guest"],
-              ["admin", "⚙️ Admin"],
-            ].map(([r, l]) => (
-              <button
-                key={r}
-                onClick={() => setRole(r)}
-                style={{
-                  flex: 1,
-                  padding: "9px 0",
-                  borderRadius: 50,
-                  border: "none",
-                  cursor: "pointer",
-                  fontFamily: "DM Sans,sans-serif",
-                  fontWeight: 600,
-                  fontSize: ".75rem",
-                  letterSpacing: ".06em",
-                  textTransform: "uppercase",
-                  transition: "all .2s",
-                  background: role === r ? C.primary : "transparent",
-                  color: role === r ? C.secondary : C.gray,
-                }}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-
-          {/* Error message */}
           {error && (
             <div
               className="sans"
@@ -290,16 +238,6 @@ const Login = ({ setPage }) => {
                 }}
               >
                 <label className="lbl">Password</label>
-                <span
-                  className="sans ul"
-                  style={{
-                    color: C.secondary,
-                    fontSize: ".75rem",
-                    fontWeight: 600,
-                  }}
-                >
-                  FORGOT?
-                </span>
               </div>
               <input
                 type="password"
@@ -391,13 +329,15 @@ const Login = ({ setPage }) => {
               Sign Up
             </span>
           </p>
+
+          {/* Back to Landing Page Option */}
           <p
             className="sans"
             style={{
               textAlign: "center",
               color: C.gray,
               fontSize: ".78rem",
-              marginTop: 10,
+              marginTop: 15,
               cursor: "pointer",
             }}
             onClick={() => setPage("landing")}

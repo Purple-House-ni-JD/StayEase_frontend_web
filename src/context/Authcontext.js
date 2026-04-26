@@ -1,32 +1,61 @@
-// src/api/reports.js
-import { api } from "./client";
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { authService } from "../api/auth";
+import { tokens } from "../api/tokens";
 
-export const reportsService = {
-  // GET /reports/dashboard/
-  dashboard: () => api.get("/reports/dashboard/"),
+const AuthContext = createContext();
 
-  // GET /reports/revenue/?period=monthly&year=2026
-  // period: 'daily' | 'weekly' | 'monthly'
-  revenue: (params = {}) => {
-    const query = new URLSearchParams(
-      Object.entries(params).filter(
-        ([, v]) => v !== "" && v !== null && v !== undefined,
-      ),
-    ).toString();
-    return api.get(`/reports/revenue/${query ? `?${query}` : ""}`);
-  },
+export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // GET /reports/occupancy/?period=monthly
-  occupancy: (period = "monthly") =>
-    api.get(`/reports/occupancy/?period=${period}`),
+  useEffect(() => {
+    const loadUser = async () => {
+      if (tokens.getAccess()) {
+        try {
+          const userData = await authService.me();
+          setUser(userData);
+        } catch (err) {
+          tokens.clear();
+        }
+      }
+      setLoading(false);
+    };
+    loadUser();
+  }, []);
 
-  // GET /reports/top-rooms/?order_by=revenue&limit=5
-  topRooms: (params = {}) => {
-    const query = new URLSearchParams(
-      Object.entries(params).filter(
-        ([, v]) => v !== "" && v !== null && v !== undefined,
-      ),
-    ).toString();
-    return api.get(`/reports/top-rooms/${query ? `?${query}` : ""}`);
-  },
+  const login = async (email, password) => {
+    const res = await authService.login(email, password);
+    tokens.set(res.access, res.refresh);
+    setUser(res.user);
+    return res.user;
+  };
+
+  const register = async (data) => {
+    const res = await authService.register(data);
+    tokens.set(res.access, res.refresh);
+    setUser(res.user);
+    return res.user;
+  };
+
+  const logout = async () => {
+    const refresh = tokens.getRefresh();
+    if (refresh) {
+      try {
+        await authService.logout(refresh);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    tokens.clear();
+    setUser(null);
+  };
+
+  // Pure JavaScript rendering to bypass Vite's JSX restrictions
+  return React.createElement(
+    AuthContext.Provider,
+    { value: { user, login, register, logout, loading } },
+    !loading ? children : null,
+  );
 };
+
+export const useAuth = () => useContext(AuthContext);

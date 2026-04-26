@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { C } from "../constants";
-import { ROOMS, BKS } from "../data";
 import { Badge } from "../components/UI";
 import Shell from "../components/Shell";
+import { roomsService } from "../api/rooms";
+import { bookingsService } from "../api/bookings";
+import { useAuth } from "../context/AuthContext"; // Ensure this file is fixed!
 
 const navItems = [
   { id: "overview", icon: "📊", label: "Overview" },
@@ -12,8 +14,65 @@ const navItems = [
 ];
 
 /* ── ROOM MODAL ── */
-const RoomModal = ({ room, onClose }) => {
+const RoomModal = ({ room, onClose, refreshData }) => {
   const isEdit = !!room?.id;
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: room?.name || "",
+    category: room?.category || "standard", // Changed default to lowercase
+    price_per_night: room?.price_per_night || "",
+    max_guest: room?.max_guest || 2,
+    description: room?.description || "",
+    availability_status: room?.availability_status !== false,
+    is_featured: room?.is_featured || false,
+  });
+
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    try {
+      const payload = {
+        ...formData,
+        price_per_night: parseFloat(formData.price_per_night) || 0.0,
+        max_guest: parseInt(formData.max_guest, 10) || 2,
+      };
+
+      // FIXED: If description is left blank, inject a placeholder so Django doesn't block it
+      if (!payload.description || payload.description.trim() === "") {
+        payload.description = "No description provided.";
+      }
+
+      if (!isEdit) {
+        payload.rating = 0.0;
+        payload.image_urls = [];
+      }
+
+      if (isEdit) {
+        await roomsService.update(room.id, payload);
+      } else {
+        await roomsService.create(payload);
+      }
+
+      refreshData();
+      onClose();
+    } catch (error) {
+      console.error("Error saving room:", error);
+      let errorMsg = "Failed to save room.";
+      if (error?.detail) errorMsg = error.detail;
+      else if (typeof error === "object") errorMsg = JSON.stringify(error);
+      alert(`Backend Error: ${errorMsg}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div
       className="mbg"
@@ -60,83 +119,127 @@ const RoomModal = ({ room, onClose }) => {
           <div>
             <label className="lbl">Room Name</label>
             <input
+              name="name"
               className="inp"
               placeholder="e.g. Grand Imperial Suite"
-              defaultValue={room?.name || ""}
+              value={formData.name}
+              onChange={handleChange}
             />
           </div>
           <div
             style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}
           >
             <div>
-              <label className="lbl">Room Type</label>
-              <select className="inp">
-                {["Standard", "Deluxe", "Suite", "Villa", "Family"].map((t) => (
-                  <option key={t}>{t}</option>
+              <label className="lbl">Category</label>
+              <select
+                name="category"
+                className="inp"
+                value={formData.category}
+                onChange={handleChange}
+              >
+                {/* FIXED: Values are now completely lowercase to match Django's backend tuple */}
+                {[
+                  { val: "standard", label: "Standard" },
+                  { val: "deluxe", label: "Deluxe" },
+                  { val: "suite", label: "Suite" },
+                  { val: "villa", label: "Villa" },
+                  { val: "family", label: "Family" },
+                ].map((t) => (
+                  <option key={t.val} value={t.val}>
+                    {t.label}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="lbl">Price per Night (₱)</label>
               <input
+                name="price_per_night"
+                type="number"
                 className="inp"
                 placeholder="0.00"
-                defaultValue={room?.price || ""}
+                value={formData.price_per_night}
+                onChange={handleChange}
               />
             </div>
           </div>
-          <div
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}
-          >
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
             <div>
-              <label className="lbl">Room Size (m²)</label>
-              <input className="inp" placeholder="32" />
-            </div>
-            <div>
-              <label className="lbl">Max Guests</label>
-              <input className="inp" placeholder="2" />
+              <label className="lbl">Max Guests (Capacity)</label>
+              <input
+                name="max_guest"
+                type="number"
+                className="inp"
+                placeholder="2"
+                value={formData.max_guest}
+                onChange={handleChange}
+              />
             </div>
           </div>
           <div>
             <label className="lbl">Description</label>
-            <input className="inp" placeholder="Describe the room..." />
+            <textarea
+              name="description"
+              className="inp"
+              placeholder="Describe the room..."
+              value={formData.description}
+              onChange={handleChange}
+              style={{ resize: "vertical", minHeight: "80px" }}
+            />
           </div>
-          <div>
-            <label className="lbl">Status</label>
-            <select className="inp">
-              <option>Active</option>
-              <option>Inactive</option>
-              <option>Maintenance</option>
-            </select>
-          </div>
-          <div>
-            <label className="lbl">Room Images (via Cloudinary)</label>
-            <div
-              style={{
-                border: `2px dashed ${C.grayL}`,
-                borderRadius: 8,
-                padding: "22px",
-                textAlign: "center",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ fontSize: "1.4rem", marginBottom: 5 }}>☁️</div>
-              <div
+
+          {/* Toggles */}
+          <div style={{ display: "flex", gap: 20, marginTop: 5 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                name="availability_status"
+                id="availability_status"
+                checked={formData.availability_status}
+                onChange={handleChange}
+                style={{ accentColor: C.primary, width: 16, height: 16 }}
+              />
+              <label
+                htmlFor="availability_status"
                 className="sans"
-                style={{ color: C.gray, fontSize: ".82rem" }}
+                style={{ color: C.primary, fontSize: ".9rem", fontWeight: 500 }}
               >
-                Click to upload or drag & drop
-              </div>
+                Available
+              </label>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                name="is_featured"
+                id="is_featured"
+                checked={formData.is_featured}
+                onChange={handleChange}
+                style={{ accentColor: C.primary, width: 16, height: 16 }}
+              />
+              <label
+                htmlFor="is_featured"
+                className="sans"
+                style={{ color: C.primary, fontSize: ".9rem", fontWeight: 500 }}
+              >
+                Featured Room
+              </label>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
-            <button className="btn-p" style={{ flex: 1, padding: "12px" }}>
-              {isEdit ? "Save Changes" : "Add Room"}
+
+          <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+            <button
+              className="btn-p"
+              style={{ flex: 1, padding: "12px" }}
+              onClick={handleSubmit}
+              disabled={loading}
+            >
+              {loading ? "Saving..." : isEdit ? "Save Changes" : "Add Room"}
             </button>
             <button
               className="btn-o"
               style={{ flex: 1, padding: "12px" }}
               onClick={onClose}
+              disabled={loading}
             >
               Cancel
             </button>
@@ -148,68 +251,45 @@ const RoomModal = ({ room, onClose }) => {
 };
 
 /* ── OVERVIEW TAB ── */
-const OverviewTab = ({ setTab, setModal }) => (
-  <div className="fi">
-    <div style={{ marginBottom: 26 }}>
-      <h1
-        className="serif"
-        style={{ color: C.primary, fontSize: "1.8rem", fontWeight: 600 }}
-      >
-        Dashboard Overview
-      </h1>
-      <p
-        className="sans"
-        style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
-      >
-        {new Date().toLocaleDateString("en-PH", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })}
-      </p>
-    </div>
+const OverviewTab = ({ setTab, setModal, rooms, bookings }) => {
+  const totalRevenue = bookings
+    .filter((b) => b.status === "completed" || b.status === "confirmed")
+    .reduce((sum, b) => sum + parseFloat(b.total_price || 0), 0);
 
-    {/* Stat cards */}
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))",
-        gap: 18,
-        marginBottom: 28,
-      }}
-    >
-      {[
-        {
-          l: "Total Reservations",
-          v: "44",
-          d: "+8 this week",
-          cls: "n",
-          i: "📋",
-        },
-        {
-          l: "Monthly Revenue",
-          v: "₱284,400",
-          d: "+12% vs last month",
-          cls: "g",
-          i: "💰",
-        },
-        {
-          l: "Occupancy Rate",
-          v: "76%",
-          d: "38 of 50 rooms",
-          cls: "v",
-          i: "🏨",
-        },
-        {
-          l: "Pending Bookings",
-          v: "7",
-          d: "Needs attention",
-          cls: "a",
-          i: "⏳",
-        },
-      ].map((s) => (
-        <div key={s.l} className={`sc ${s.cls}`}>
+  const pendingBookings = bookings.filter((b) => b.status === "pending").length;
+
+  return (
+    <div className="fi">
+      <div style={{ marginBottom: 26 }}>
+        <h1
+          className="serif"
+          style={{ color: C.primary, fontSize: "1.8rem", fontWeight: 600 }}
+        >
+          Dashboard Overview
+        </h1>
+        <p
+          className="sans"
+          style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
+        >
+          {new Date().toLocaleDateString("en-PH", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          })}
+        </p>
+      </div>
+
+      {/* Stat cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))",
+          gap: 18,
+          marginBottom: 28,
+        }}
+      >
+        <div className="sc n">
           <div
             style={{
               display: "flex",
@@ -227,9 +307,9 @@ const OverviewTab = ({ setTab, setModal }) => (
                 textTransform: "uppercase",
               }}
             >
-              {s.l}
+              Total Reservations
             </span>
-            <span style={{ fontSize: "1.1rem" }}>{s.i}</span>
+            <span style={{ fontSize: "1.1rem" }}>📋</span>
           </div>
           <div
             className="serif"
@@ -240,507 +320,422 @@ const OverviewTab = ({ setTab, setModal }) => (
               marginBottom: 6,
             }}
           >
-            {s.v}
-          </div>
-          <div
-            className="sans"
-            style={{ color: C.secondary, fontSize: ".72rem" }}
-          >
-            {s.d}
+            {bookings.length}
           </div>
         </div>
-      ))}
-    </div>
-
-    {/* Recent reservations table */}
-    <div
-      style={{
-        background: C.neutral,
-        borderRadius: 12,
-        boxShadow: "0 2px 12px rgba(10,29,55,.07)",
-        overflow: "hidden",
-        marginBottom: 24,
-      }}
-    >
-      <div
-        style={{
-          padding: "18px 24px",
-          borderBottom: `1px solid ${C.grayL}`,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <h3
-          className="serif"
-          style={{ color: C.primary, fontSize: "1.1rem", fontWeight: 600 }}
-        >
-          Latest Reservations
-        </h3>
-        <span
-          className="sans ul"
-          style={{
-            color: C.secondary,
-            fontSize: ".78rem",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-          onClick={() => setTab("reservations")}
-        >
-          View All →
-        </span>
+        <div className="sc g">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <span
+              className="sans"
+              style={{
+                color: C.gray,
+                fontSize: ".68rem",
+                fontWeight: 700,
+                letterSpacing: ".1em",
+                textTransform: "uppercase",
+              }}
+            >
+              Est. Revenue
+            </span>
+            <span style={{ fontSize: "1.1rem" }}>💰</span>
+          </div>
+          <div
+            className="serif"
+            style={{
+              color: C.primary,
+              fontSize: "1.9rem",
+              fontWeight: 700,
+              marginBottom: 6,
+            }}
+          >
+            ₱{totalRevenue.toLocaleString()}
+          </div>
+        </div>
+        <div className="sc v">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <span
+              className="sans"
+              style={{
+                color: C.gray,
+                fontSize: ".68rem",
+                fontWeight: 700,
+                letterSpacing: ".1em",
+                textTransform: "uppercase",
+              }}
+            >
+              Total Rooms
+            </span>
+            <span style={{ fontSize: "1.1rem" }}>🏨</span>
+          </div>
+          <div
+            className="serif"
+            style={{
+              color: C.primary,
+              fontSize: "1.9rem",
+              fontWeight: 700,
+              marginBottom: 6,
+            }}
+          >
+            {rooms.length}
+          </div>
+        </div>
+        <div className="sc a">
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <span
+              className="sans"
+              style={{
+                color: C.gray,
+                fontSize: ".68rem",
+                fontWeight: 700,
+                letterSpacing: ".1em",
+                textTransform: "uppercase",
+              }}
+            >
+              Pending
+            </span>
+            <span style={{ fontSize: "1.1rem" }}>⏳</span>
+          </div>
+          <div
+            className="serif"
+            style={{
+              color: C.primary,
+              fontSize: "1.9rem",
+              fontWeight: 700,
+              marginBottom: 6,
+            }}
+          >
+            {pendingBookings}
+          </div>
+        </div>
       </div>
-      <div style={{ overflowX: "auto" }}>
-        <table className="tbl">
-          <thead>
-            <tr>
-              {[
-                "Reference",
-                "Guest",
-                "Room",
-                "Check-in",
-                "Nights",
-                "Amount",
-                "Status",
-                "Actions",
-              ].map((h) => (
-                <th key={h}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {BKS.slice(0, 4).map((b) => (
-              <tr key={b.ref}>
-                <td>
-                  <span
-                    className="sans"
-                    style={{
-                      color: C.secondary,
-                      fontWeight: 700,
-                      fontSize: ".8rem",
-                    }}
-                  >
-                    {b.ref}
-                  </span>
-                </td>
-                <td>
-                  <span style={{ fontWeight: 600 }}>{b.guest}</span>
-                </td>
-                <td>{b.room}</td>
-                <td>{b.checkIn}</td>
-                <td style={{ textAlign: "center" }}>{b.nights}</td>
-                <td>
-                  <span
-                    className="serif"
-                    style={{ color: C.primary, fontWeight: 700 }}
-                  >
-                    ₱{b.amt.toLocaleString()}
-                  </span>
-                </td>
-                <td>
-                  <Badge s={b.status} />
-                </td>
-                <td>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {b.status === "pending" && (
-                      <button
-                        style={{
-                          background: "#DCFCE7",
-                          color: "#166534",
-                          border: "none",
-                          padding: "4px 10px",
-                          fontSize: ".65rem",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          borderRadius: 4,
-                          fontFamily: "DM Sans,sans-serif",
-                        }}
-                      >
-                        ✓ Confirm
-                      </button>
-                    )}
-                    <button
-                      style={{
-                        background: C.grayXL,
-                        color: C.gray,
-                        border: "none",
-                        padding: "4px 10px",
-                        fontSize: ".65rem",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        borderRadius: 4,
-                        fontFamily: "DM Sans,sans-serif",
-                      }}
-                    >
-                      Edit
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
 
-    {/* Bottom row */}
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      {/* Recent reservations table */}
       <div
         style={{
           background: C.neutral,
           borderRadius: 12,
-          padding: "22px",
           boxShadow: "0 2px 12px rgba(10,29,55,.07)",
+          overflow: "hidden",
+          marginBottom: 24,
         }}
       >
-        <h3
-          className="serif"
+        <div
           style={{
-            color: C.primary,
-            fontSize: "1.05rem",
-            fontWeight: 600,
-            marginBottom: 18,
+            padding: "18px 24px",
+            borderBottom: `1px solid ${C.grayL}`,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
           }}
         >
-          Room Availability
-        </h3>
-        {ROOMS.slice(0, 4).map((r) => (
-          <div key={r.name} style={{ marginBottom: 15 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 5,
-              }}
-            >
-              <span
-                className="sans"
-                style={{
-                  color: C.primary,
-                  fontSize: ".82rem",
-                  fontWeight: 500,
-                }}
-              >
-                {r.name}
-              </span>
-              <span
-                className="sans"
-                style={{ color: C.gray, fontSize: ".74rem" }}
-              >
-                {r.avail} avail.
-              </span>
-            </div>
-            <div style={{ height: 6, background: C.grayL, borderRadius: 3 }}>
-              <div
-                style={{
-                  height: "100%",
-                  width: `${(r.avail / 12) * 100}%`,
-                  background: `linear-gradient(90deg,${C.secondary},${C.tertiary})`,
-                  borderRadius: 3,
-                }}
-              />
-            </div>
-          </div>
-        ))}
+          <h3
+            className="serif"
+            style={{ color: C.primary, fontSize: "1.1rem", fontWeight: 600 }}
+          >
+            Latest Reservations
+          </h3>
+          <span
+            className="sans ul"
+            style={{
+              color: C.secondary,
+              fontSize: ".78rem",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            onClick={() => setTab("reservations")}
+          >
+            View All →
+          </span>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                {["Reference ID", "Guests", "Check-in", "Amount", "Status"].map(
+                  (h) => (
+                    <th key={h}>{h}</th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {bookings.slice(0, 5).map((b) => (
+                <tr key={b.id}>
+                  <td>
+                    <span
+                      className="sans"
+                      style={{
+                        color: C.secondary,
+                        fontWeight: 700,
+                        fontSize: ".8rem",
+                      }}
+                    >
+                      {b.booking_ref}
+                    </span>
+                  </td>
+                  <td>{b.guest_count} Guests</td>
+                  <td>{b.check_in}</td>
+                  <td>
+                    <span
+                      className="serif"
+                      style={{ color: C.primary, fontWeight: 700 }}
+                    >
+                      ₱{parseFloat(b.total_price || 0).toLocaleString()}
+                    </span>
+                  </td>
+                  <td>
+                    <Badge s={b.status} />
+                  </td>
+                </tr>
+              ))}
+              {bookings.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="5"
+                    style={{ textAlign: "center", padding: "20px" }}
+                  >
+                    No recent bookings
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── ROOMS TAB ── */
+const RoomsTab = ({ setModal, rooms, refreshData }) => {
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to delete this room?")) {
+      try {
+        await roomsService.delete(id);
+        refreshData();
+      } catch (err) {
+        alert("Failed to delete room.");
+      }
+    }
+  };
+
+  return (
+    <div className="fi">
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: 22,
+        }}
+      >
+        <div>
+          <h2
+            className="serif"
+            style={{ color: C.primary, fontSize: "1.6rem", fontWeight: 600 }}
+          >
+            Room Management
+          </h2>
+          <p
+            className="sans"
+            style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
+          >
+            Create, edit, and manage all room listings
+          </p>
+        </div>
+        <button
+          className="btn-g"
+          style={{ padding: "11px 24px" }}
+          onClick={() => setModal("add")}
+        >
+          + Add New Room
+        </button>
       </div>
 
       <div
         style={{
-          background: C.primary,
-          borderRadius: 12,
-          padding: "22px",
-          boxShadow: "0 2px 12px rgba(10,29,55,.1)",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))",
+          gap: 22,
         }}
       >
-        <h3
-          className="serif"
-          style={{
-            color: C.neutral,
-            fontSize: "1.05rem",
-            fontWeight: 600,
-            marginBottom: 18,
-          }}
-        >
-          Quick Actions
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[
-            ["🛏️", "Add New Room", "rooms"],
-            ["📊", "View Reports", "reports"],
-            ["📋", "Manage Reservations", "reservations"],
-          ].map(([ic, l, t]) => (
-            <button
-              key={l}
-              onClick={() => (t === "rooms" ? setModal("add") : setTab(t))}
+        {rooms.length === 0 ? (
+          <p style={{ color: C.gray, fontFamily: "sans-serif" }}>
+            No rooms found. Add one above!
+          </p>
+        ) : (
+          rooms.map((r) => (
+            <div
+              key={r.id}
               style={{
-                background: "rgba(255,255,255,.06)",
-                border: "1px solid rgba(197,160,89,.15)",
-                color: "rgba(255,255,255,.8)",
-                padding: "12px 16px",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontFamily: "DM Sans,sans-serif",
-                fontSize: ".85rem",
-                textAlign: "left",
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                transition: "background .15s",
+                background: C.neutral,
+                borderRadius: 14,
+                overflow: "hidden",
+                boxShadow: "0 2px 12px rgba(10,29,55,.07)",
               }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "rgba(197,160,89,.12)")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "rgba(255,255,255,.06)")
-              }
             >
-              <span>{ic}</span>
-              {l}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-/* ── ROOMS TAB ── */
-const RoomsTab = ({ setModal }) => (
-  <div className="fi">
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginBottom: 22,
-      }}
-    >
-      <div>
-        <h2
-          className="serif"
-          style={{ color: C.primary, fontSize: "1.6rem", fontWeight: 600 }}
-        >
-          Room Management
-        </h2>
-        <p
-          className="sans"
-          style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
-        >
-          Create, edit, and manage all room listings
-        </p>
-      </div>
-      <button
-        className="btn-g"
-        style={{ padding: "11px 24px" }}
-        onClick={() => setModal("add")}
-      >
-        + Add New Room
-      </button>
-    </div>
-
-    <div
-      style={{
-        display: "flex",
-        gap: 8,
-        marginBottom: 18,
-        flexWrap: "wrap",
-        alignItems: "center",
-      }}
-    >
-      {["All", "Standard", "Deluxe", "Suite", "Family"].map((f, i) => (
-        <button key={f} className={`ct${i === 0 ? " on" : ""}`}>
-          {f}
-        </button>
-      ))}
-      <div style={{ marginLeft: "auto", position: "relative" }}>
-        <span
-          style={{
-            position: "absolute",
-            left: 12,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: C.gray,
-            fontSize: ".85rem",
-          }}
-        >
-          🔍
-        </span>
-        <input
-          className="inp"
-          placeholder="Search rooms..."
-          style={{ width: 210, paddingLeft: 36 }}
-        />
-      </div>
-    </div>
-
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))",
-        gap: 22,
-      }}
-    >
-      {ROOMS.map((r) => (
-        <div
-          key={r.id}
-          style={{
-            background: C.neutral,
-            borderRadius: 14,
-            overflow: "hidden",
-            boxShadow: "0 2px 12px rgba(10,29,55,.07)",
-          }}
-        >
-          <div style={{ position: "relative", height: 180 }}>
-            <img
-              src={r.img}
-              alt={r.name}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-            <div style={{ position: "absolute", top: 10, right: 10 }}>
-              <span
+              <div
                 style={{
-                  background: "#DCFCE7",
-                  color: "#166534",
-                  fontSize: ".62rem",
-                  fontWeight: 700,
-                  padding: "3px 9px",
-                  borderRadius: 4,
-                  fontFamily: "DM Sans,sans-serif",
+                  position: "relative",
+                  height: 160,
+                  backgroundColor: C.grayXL,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                ACTIVE
-              </span>
-            </div>
-            <div style={{ position: "absolute", bottom: 10, left: 12 }}>
-              <span
-                className="sans"
-                style={{
-                  background: "rgba(10,29,55,.8)",
-                  color: C.secondary,
-                  fontSize: ".62rem",
-                  fontWeight: 700,
-                  letterSpacing: ".08em",
-                  textTransform: "uppercase",
-                  padding: "3px 9px",
-                  borderRadius: 4,
-                }}
-              >
-                {r.type}
-              </span>
-            </div>
-          </div>
-          <div style={{ padding: "16px 18px" }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 4,
-              }}
-            >
-              <h4
-                className="serif"
-                style={{ color: C.primary, fontSize: "1rem", fontWeight: 600 }}
-              >
-                {r.name}
-              </h4>
-              <span
-                className="serif"
-                style={{ color: C.secondary, fontWeight: 700 }}
-              >
-                ₱{r.price.toLocaleString()}
-              </span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 12,
-              }}
-            >
-              <span
-                className="sans"
-                style={{ color: C.gray, fontSize: ".74rem" }}
-              >
-                {r.avail} of 10 available
-              </span>
-              <div style={{ display: "flex", gap: 3 }}>
-                {Array.from({ length: 10 }).map((_, i) => (
-                  <div
-                    key={i}
+                {/* FIXED DB FIELD: image_urls */}
+                {r.image_urls?.length > 0 ? (
+                  <img
+                    src={r.image_urls[0].image_url || r.image_urls[0]}
+                    alt={r.name}
                     style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: "50%",
-                      background: i < r.avail ? "#16A34A" : C.grayL,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
                     }}
                   />
-                ))}
+                ) : (
+                  <span
+                    style={{
+                      color: C.gray,
+                      fontFamily: "sans-serif",
+                      fontSize: "0.8rem",
+                    }}
+                  >
+                    No Image Provided
+                  </span>
+                )}
+                <div style={{ position: "absolute", top: 10, right: 10 }}>
+                  {/* FIXED DB FIELD: availability_status */}
+                  <span
+                    style={{
+                      background: r.availability_status ? "#DCFCE7" : "#FEE2E2",
+                      color: r.availability_status ? "#166534" : C.red,
+                      fontSize: ".62rem",
+                      fontWeight: 700,
+                      padding: "3px 9px",
+                      borderRadius: 4,
+                      fontFamily: "DM Sans,sans-serif",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {r.availability_status ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <div style={{ position: "absolute", bottom: 10, left: 12 }}>
+                  {/* FIXED DB FIELD: category */}
+                  <span
+                    className="sans"
+                    style={{
+                      background: "rgba(10,29,55,.8)",
+                      color: C.secondary,
+                      fontSize: ".62rem",
+                      fontWeight: 700,
+                      letterSpacing: ".08em",
+                      textTransform: "uppercase",
+                      padding: "3px 9px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    {r.category || "Standard"}
+                  </span>
+                </div>
+              </div>
+              <div style={{ padding: "16px 18px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: 8,
+                  }}
+                >
+                  <h4
+                    className="serif"
+                    style={{
+                      color: C.primary,
+                      fontSize: "1rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {r.name}
+                  </h4>
+                  <span
+                    className="serif"
+                    style={{ color: C.secondary, fontWeight: 700 }}
+                  >
+                    ₱{parseFloat(r.price_per_night || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    style={{
+                      flex: 1,
+                      background: C.primary,
+                      color: C.secondary,
+                      border: "none",
+                      padding: "9px",
+                      borderRadius: 8,
+                      fontFamily: "DM Sans,sans-serif",
+                      fontSize: ".72rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                    onClick={() => setModal(r)}
+                  >
+                    EDIT
+                  </button>
+                  <button
+                    style={{
+                      width: 36,
+                      background: "#FEE2E2",
+                      color: C.red,
+                      border: "none",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontSize: ".85rem",
+                    }}
+                    onClick={() => handleDelete(r.id)}
+                  >
+                    🗑
+                  </button>
+                </div>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                style={{
-                  flex: 1,
-                  background: C.primary,
-                  color: C.secondary,
-                  border: "none",
-                  padding: "9px",
-                  borderRadius: 8,
-                  fontFamily: "DM Sans,sans-serif",
-                  fontSize: ".72rem",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  letterSpacing: ".06em",
-                }}
-                onClick={() => setModal(r)}
-              >
-                EDIT
-              </button>
-              <button
-                style={{
-                  flex: 1,
-                  background: C.grayXL,
-                  color: C.gray,
-                  border: `1.5px solid ${C.grayL}`,
-                  padding: "9px",
-                  borderRadius: 8,
-                  fontFamily: "DM Sans,sans-serif",
-                  fontSize: ".72rem",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                MANAGE
-              </button>
-              <button
-                style={{
-                  width: 36,
-                  background: "#FEE2E2",
-                  color: C.red,
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: ".85rem",
-                }}
-              >
-                🗑
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
+          ))
+        )}
+      </div>
     </div>
-  </div>
-);
-
+  );
+};
 /* ── RESERVATIONS TAB ── */
-const ReservationsTab = () => {
-  const [bFilter, setBFilter] = useState("All");
-  const filteredBks =
-    bFilter === "All"
-      ? BKS
-      : BKS.filter((b) => b.status === bFilter.toLowerCase());
+const ReservationsTab = ({ bookings, refreshData }) => {
+  const handleStatusUpdate = async (id, newStatus) => {
+    try {
+      await bookingsService.updateStatus(id, newStatus);
+      refreshData();
+    } catch (err) {
+      alert("Failed to update status.");
+    }
+  };
 
   return (
     <div className="fi">
@@ -751,99 +746,6 @@ const ReservationsTab = () => {
         >
           Reservation Management
         </h2>
-        <p
-          className="sans"
-          style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
-        >
-          Track and manage all guest reservations
-        </p>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4,1fr)",
-          gap: 14,
-          marginBottom: 22,
-        }}
-      >
-        {[
-          ["All", BKS.length, C.primary],
-          [
-            "Active",
-            BKS.filter((b) => b.status === "active").length,
-            "#1D4ED8",
-          ],
-          [
-            "Pending",
-            BKS.filter((b) => b.status === "pending").length,
-            "#D97706",
-          ],
-          [
-            "Cancelled",
-            BKS.filter((b) => b.status === "cancelled").length,
-            C.red,
-          ],
-        ].map(([l, v, cl]) => (
-          <div
-            key={l}
-            style={{
-              background: C.neutral,
-              borderRadius: 10,
-              padding: "14px 18px",
-              textAlign: "center",
-              boxShadow: "0 2px 8px rgba(10,29,55,.06)",
-              borderTop: `3px solid ${cl}`,
-              cursor: "pointer",
-            }}
-            onClick={() => setBFilter(l)}
-          >
-            <div
-              className="sans"
-              style={{ color: cl, fontSize: "1.4rem", fontWeight: 700 }}
-            >
-              {v}
-            </div>
-            <div
-              className="sans"
-              style={{
-                color: C.gray,
-                fontSize: ".7rem",
-                textTransform: "uppercase",
-                letterSpacing: ".08em",
-              }}
-            >
-              {l}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          marginBottom: 16,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        {["All", "Active", "Pending", "Confirmed", "Cancelled"].map((f) => (
-          <button
-            key={f}
-            className={`ct${bFilter === f ? " on" : ""}`}
-            onClick={() => setBFilter(f)}
-          >
-            {f}
-          </button>
-        ))}
-        <div style={{ marginLeft: "auto" }}>
-          <input
-            className="inp"
-            placeholder="Search by ref, guest, room..."
-            style={{ width: 260 }}
-          />
-        </div>
       </div>
 
       <div
@@ -858,13 +760,12 @@ const ReservationsTab = () => {
           <table className="tbl">
             <thead>
               <tr>
+                {/* Removed "Guest ID" from headers */}
                 {[
-                  "Reference",
-                  "Guest",
-                  "Room",
+                  "Ref ID",
+                  "Guests",
                   "Check-in",
                   "Check-out",
-                  "Payment",
                   "Amount",
                   "Status",
                   "Actions",
@@ -874,8 +775,8 @@ const ReservationsTab = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredBks.map((b) => (
-                <tr key={b.ref}>
+              {bookings.map((b) => (
+                <tr key={b.id}>
                   <td>
                     <span
                       className="sans"
@@ -885,38 +786,19 @@ const ReservationsTab = () => {
                         fontSize: ".78rem",
                       }}
                     >
-                      {b.ref}
+                      {b.booking_ref}
                     </span>
                   </td>
-                  <td>
-                    <span style={{ fontWeight: 600 }}>{b.guest}</span>
-                  </td>
-                  <td
-                    style={{
-                      maxWidth: 160,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {b.room}
-                  </td>
-                  <td>{b.checkIn}</td>
-                  <td>{b.checkOut}</td>
-                  <td>
-                    <span
-                      className="sans"
-                      style={{ color: C.gray, fontSize: ".78rem" }}
-                    >
-                      {b.pay}
-                    </span>
-                  </td>
+                  {/* Removed user_id column */}
+                  <td>{b.guest_count}</td>
+                  <td>{b.check_in}</td>
+                  <td>{b.check_out}</td>
                   <td>
                     <span
                       className="serif"
                       style={{ color: C.primary, fontWeight: 700 }}
                     >
-                      ₱{b.amt.toLocaleString()}
+                      ₱{parseFloat(b.total_price || 0).toLocaleString()}
                     </span>
                   </td>
                   <td>
@@ -926,6 +808,7 @@ const ReservationsTab = () => {
                     <div style={{ display: "flex", gap: 5 }}>
                       {b.status === "pending" && (
                         <button
+                          onClick={() => handleStatusUpdate(b.id, "confirmed")}
                           style={{
                             background: "#DCFCE7",
                             color: "#166534",
@@ -935,42 +818,28 @@ const ReservationsTab = () => {
                             fontWeight: 700,
                             cursor: "pointer",
                             borderRadius: 4,
-                            fontFamily: "DM Sans,sans-serif",
                           }}
                         >
                           ✓
                         </button>
                       )}
-                      <button
-                        style={{
-                          background: "#DBEAFE",
-                          color: "#1E40AF",
-                          border: "none",
-                          padding: "4px 9px",
-                          fontSize: ".65rem",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          borderRadius: 4,
-                          fontFamily: "DM Sans,sans-serif",
-                        }}
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        style={{
-                          background: "#FEE2E2",
-                          color: C.red,
-                          border: "none",
-                          padding: "4px 9px",
-                          fontSize: ".65rem",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          borderRadius: 4,
-                          fontFamily: "DM Sans,sans-serif",
-                        }}
-                      >
-                        ✕
-                      </button>
+                      {b.status !== "cancelled" && (
+                        <button
+                          onClick={() => handleStatusUpdate(b.id, "cancelled")}
+                          style={{
+                            background: "#FEE2E2",
+                            color: C.red,
+                            border: "none",
+                            padding: "4px 9px",
+                            fontSize: ".65rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            borderRadius: 4,
+                          }}
+                        >
+                          ✕
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -984,17 +853,33 @@ const ReservationsTab = () => {
 };
 
 /* ── REPORTS TAB ── */
-const ReportsTab = () => (
-  <div className="fi">
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginBottom: 26,
-      }}
-    >
-      <div>
+const ReportsTab = ({ bookings = [] }) => {
+  // Force all statuses to lowercase so React catches them regardless of how Django formats them
+  const completed = bookings.filter((b) => {
+    const s = String(b.status || "").toLowerCase();
+    return s === "completed" || s === "confirmed";
+  });
+
+  const cancelled = bookings.filter(
+    (b) => String(b.status || "").toLowerCase() === "cancelled",
+  );
+  const pending = bookings.filter(
+    (b) => String(b.status || "").toLowerCase() === "pending",
+  );
+
+  const totalRev = completed.reduce(
+    (acc, b) => acc + parseFloat(b.total_price || 0),
+    0,
+  );
+  const lostRev = cancelled.reduce(
+    (acc, b) => acc + parseFloat(b.total_price || 0),
+    0,
+  );
+  const avgBooking = completed.length ? totalRev / completed.length : 0;
+
+  return (
+    <div className="fi">
+      <div style={{ marginBottom: 22 }}>
         <h2
           className="serif"
           style={{ color: C.primary, fontSize: "1.6rem", fontWeight: 600 }}
@@ -1005,323 +890,230 @@ const ReportsTab = () => (
           className="sans"
           style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
         >
-          Revenue & occupancy analytics
+          Real-time revenue and booking analytics
         </p>
       </div>
-      <div style={{ display: "flex", gap: 10 }}>
-        <select className="inp" style={{ width: 140 }}>
-          {["April 2026", "March 2026", "February 2026"].map((m) => (
-            <option key={m}>{m}</option>
-          ))}
-        </select>
-        <button className="btn-g" style={{ padding: "10px 22px" }}>
-          Export PDF
-        </button>
-      </div>
-    </div>
 
-    {/* Revenue cards */}
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
-        gap: 18,
-        marginBottom: 26,
-      }}
-    >
-      {[
-        { p: "Today", v: "₱21,800", b: 3, pct: "+8%", cls: "n" },
-        { p: "This Week", v: "₱148,600", b: 18, pct: "+14%", cls: "g" },
-        { p: "This Month", v: "₱284,400", b: 44, pct: "+12%", cls: "v" },
-        { p: "This Year", v: "₱1,240,000", b: 186, pct: "+22%", cls: "a" },
-      ].map((r) => (
-        <div key={r.p} className={`sc ${r.cls}`}>
+      {/* KPI Cards */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))",
+          gap: 18,
+          marginBottom: 28,
+        }}
+      >
+        <div
+          style={{
+            background: C.neutral,
+            padding: 24,
+            borderRadius: 12,
+            boxShadow: "0 2px 10px rgba(10,29,55,.05)",
+            borderLeft: `4px solid #166534`,
+          }}
+        >
           <div
             className="sans"
             style={{
               color: C.gray,
-              fontSize: ".68rem",
+              fontSize: ".75rem",
               fontWeight: 700,
               letterSpacing: ".1em",
               textTransform: "uppercase",
               marginBottom: 8,
             }}
           >
-            {r.p}
+            Net Revenue
           </div>
           <div
             className="serif"
+            style={{ color: C.primary, fontSize: "2rem", fontWeight: 700 }}
+          >
+            ₱{totalRev.toLocaleString()}
+          </div>
+        </div>
+        <div
+          style={{
+            background: C.neutral,
+            padding: 24,
+            borderRadius: 12,
+            boxShadow: "0 2px 10px rgba(10,29,55,.05)",
+            borderLeft: `4px solid ${C.secondary}`,
+          }}
+        >
+          <div
+            className="sans"
             style={{
-              color: C.primary,
-              fontSize: "1.8rem",
+              color: C.gray,
+              fontSize: ".75rem",
               fontWeight: 700,
+              letterSpacing: ".1em",
+              textTransform: "uppercase",
               marginBottom: 8,
             }}
           >
-            {r.v}
+            Avg. Booking Value
           </div>
-          <div style={{ display: "flex", gap: 16 }}>
-            <div>
-              <div
-                className="sans"
-                style={{ color: C.gray, fontSize: ".65rem" }}
-              >
-                Bookings
-              </div>
-              <div
-                className="sans"
-                style={{ color: C.primary, fontWeight: 700 }}
-              >
-                {r.b}
-              </div>
-            </div>
-            <div>
-              <div
-                className="sans"
-                style={{ color: C.gray, fontSize: ".65rem" }}
-              >
-                vs last period
-              </div>
-              <div
-                className="sans"
-                style={{ color: "#16A34A", fontWeight: 700 }}
-              >
-                {r.pct}
-              </div>
-            </div>
+          <div
+            className="serif"
+            style={{ color: C.primary, fontSize: "2rem", fontWeight: 700 }}
+          >
+            ₱
+            {avgBooking.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
         </div>
-      ))}
-    </div>
-
-    {/* Bar chart */}
-    <div
-      style={{
-        background: C.neutral,
-        borderRadius: 12,
-        padding: "24px",
-        boxShadow: "0 2px 12px rgba(10,29,55,.07)",
-        marginBottom: 22,
-      }}
-    >
-      <h3
-        className="serif"
-        style={{
-          color: C.primary,
-          fontSize: "1.05rem",
-          fontWeight: 600,
-          marginBottom: 18,
-        }}
-      >
-        Monthly Revenue Trend
-      </h3>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-end",
-          gap: 8,
-          height: 150,
-          padding: "0 8px",
-        }}
-      >
-        {[
-          { m: "Nov", h: 55 },
-          { m: "Dec", h: 80 },
-          { m: "Jan", h: 60 },
-          { m: "Feb", h: 72 },
-          { m: "Mar", h: 65 },
-          { m: "Apr", h: 100 },
-        ].map((b) => (
+        <div
+          style={{
+            background: C.neutral,
+            padding: 24,
+            borderRadius: 12,
+            boxShadow: "0 2px 10px rgba(10,29,55,.05)",
+            borderLeft: `4px solid ${C.red}`,
+          }}
+        >
           <div
-            key={b.m}
+            className="sans"
             style={{
-              flex: 1,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 6,
+              color: C.gray,
+              fontSize: ".75rem",
+              fontWeight: 700,
+              letterSpacing: ".1em",
+              textTransform: "uppercase",
+              marginBottom: 8,
             }}
           >
-            <div
-              style={{
-                width: "100%",
-                height: `${b.h}%`,
-                background:
-                  b.m === "Apr"
-                    ? `linear-gradient(180deg,${C.tertiary},${C.secondary})`
-                    : `linear-gradient(180deg,rgba(197,160,89,.3),rgba(197,160,89,.15))`,
-                borderRadius: "4px 4px 0 0",
-                transition: "height .5s",
-              }}
-            />
-            <span className="sans" style={{ color: C.gray, fontSize: ".7rem" }}>
-              {b.m}
-            </span>
+            Lost Revenue (Cancelled)
           </div>
-        ))}
+          <div
+            className="serif"
+            style={{ color: C.primary, fontSize: "2rem", fontWeight: 700 }}
+          >
+            ₱{lostRev.toLocaleString()}
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-      {/* Top room types */}
+      {/* Visual Data Breakdown */}
       <div
         style={{
           background: C.neutral,
           borderRadius: 12,
-          padding: "22px",
-          boxShadow: "0 2px 12px rgba(10,29,55,.07)",
+          padding: 24,
+          boxShadow: "0 2px 10px rgba(10,29,55,.05)",
         }}
       >
         <h3
           className="serif"
           style={{
             color: C.primary,
-            fontSize: "1.05rem",
+            fontSize: "1.2rem",
             fontWeight: 600,
-            marginBottom: 18,
+            marginBottom: 20,
           }}
         >
-          Top Performing Room Types
+          Booking Status Breakdown
         </h3>
-        {[
-          { n: "Executive Suite", v: "₱88,000", b: 10, p: 88 },
-          { n: "Junior Suite", v: "₱66,000", b: 12, p: 66 },
-          { n: "Deluxe Room", v: "₱57,600", b: 18, p: 57 },
-          { n: "Standard Room", v: "₱35,200", b: 16, p: 35 },
-        ].map((r) => (
-          <div key={r.n} style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {[
+            {
+              label: "Completed / Confirmed",
+              count: completed.length,
+              color: "#166534",
+            },
+            { label: "Pending", count: pending.length, color: "#9A3412" },
+            { label: "Cancelled", count: cancelled.length, color: C.red },
+          ].map((stat) => (
             <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 4,
-              }}
+              key={stat.label}
+              style={{ display: "flex", alignItems: "center", gap: 14 }}
             >
-              <span
-                className="sans"
+              <div
                 style={{
-                  color: C.primary,
-                  fontWeight: 500,
-                  fontSize: ".84rem",
-                }}
-              >
-                {r.n}
-              </span>
-              <span
-                className="serif"
-                style={{
-                  color: C.secondary,
-                  fontWeight: 700,
+                  width: 180,
                   fontSize: ".9rem",
-                }}
-              >
-                {r.v}
-              </span>
-            </div>
-            <div style={{ height: 6, background: C.grayL, borderRadius: 3 }}>
-              <div
-                style={{
-                  height: "100%",
-                  width: `${r.p}%`,
-                  background: `linear-gradient(90deg,${C.secondary},${C.tertiary})`,
-                  borderRadius: 3,
-                }}
-              />
-            </div>
-            <div
-              className="sans"
-              style={{ color: C.gray, fontSize: ".67rem", marginTop: 3 }}
-            >
-              {r.b} bookings
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Payment breakdown */}
-      <div
-        style={{
-          background: C.neutral,
-          borderRadius: 12,
-          padding: "22px",
-          boxShadow: "0 2px 12px rgba(10,29,55,.07)",
-        }}
-      >
-        <h3
-          className="serif"
-          style={{
-            color: C.primary,
-            fontSize: "1.05rem",
-            fontWeight: 600,
-            marginBottom: 18,
-          }}
-        >
-          Payment Method Breakdown
-        </h3>
-        {[
-          { m: "Credit / Debit Card", p: 45, b: 20, cl: C.primary },
-          { m: "GCash", p: 30, b: 13, cl: "#1E40AF" },
-          { m: "Maya", p: 15, b: 7, cl: "#16A34A" },
-          { m: "Cash on Arrival", p: 10, b: 4, cl: "#D97706" },
-        ].map((p) => (
-          <div key={p.m} style={{ marginBottom: 16 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 4,
-              }}
-            >
-              <span
-                className="sans"
-                style={{
-                  color: C.primary,
-                  fontSize: ".84rem",
                   fontWeight: 500,
+                  color: C.primary,
                 }}
               >
-                {p.m}
-              </span>
-              <span
-                className="sans"
-                style={{ color: C.gray, fontSize: ".76rem" }}
-              >
-                {p.p}% · {p.b} txns
-              </span>
-            </div>
-            <div style={{ height: 6, background: C.grayL, borderRadius: 3 }}>
+                {stat.label}
+              </div>
               <div
                 style={{
-                  height: "100%",
-                  width: `${p.p}%`,
-                  background: p.cl,
-                  borderRadius: 3,
-                  opacity: 0.7,
+                  flex: 1,
+                  background: C.grayL,
+                  height: 12,
+                  borderRadius: 6,
+                  overflow: "hidden",
                 }}
-              />
+              >
+                <div
+                  style={{
+                    width: `${bookings.length ? (stat.count / bookings.length) * 100 : 0}%`,
+                    height: "100%",
+                    background: stat.color,
+                    borderRadius: 6,
+                    transition: "width 0.5s ease-out",
+                  }}
+                />
+              </div>
+              <div
+                style={{
+                  width: 40,
+                  textAlign: "right",
+                  fontSize: ".95rem",
+                  fontWeight: 700,
+                  color: C.primary,
+                }}
+              >
+                {stat.count}
+              </div>
             </div>
-          </div>
-        ))}
-        <button
-          className="btn-p"
-          style={{
-            width: "100%",
-            padding: "11px",
-            marginTop: 10,
-            fontSize: ".78rem",
-          }}
-        >
-          Download Full Report
-        </button>
+          ))}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* ── MAIN COMPONENT ── */
 const AdminDash = ({ setPage }) => {
+  const { user } = useAuth(); // Hooks into global context
   const [tab, setTab] = useState("overview");
   const [modal, setModal] = useState(null);
+
+  const [rooms, setRooms] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      const [roomsData, bookingsData] = await Promise.all([
+        roomsService.list(),
+        bookingsService.list(), // <--- CHANGED FROM getAll() TO list()
+      ]);
+      setRooms(roomsData.results || roomsData);
+      setBookings(bookingsData.results || bookingsData);
+    } catch (error) {
+      console.error("Error loading admin dashboard:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div
+        style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif" }}
+      >
+        Loading Admin Dashboard...
+      </div>
+    );
+  }
 
   return (
     <>
@@ -1329,6 +1121,7 @@ const AdminDash = ({ setPage }) => {
         <RoomModal
           room={modal === "add" ? null : modal}
           onClose={() => setModal(null)}
+          refreshData={fetchDashboardData}
         />
       )}
       <Shell
@@ -1336,16 +1129,32 @@ const AdminDash = ({ setPage }) => {
         tab={tab}
         setTab={setTab}
         setPage={setPage}
-        name="Admin User"
+        name={user?.full_name || "Adminstrator"}
         role="admin"
-        init="AD"
+        init={user?.full_name?.charAt(0) || "A"}
       >
         {tab === "overview" && (
-          <OverviewTab setTab={setTab} setModal={setModal} />
+          <OverviewTab
+            setTab={setTab}
+            setModal={setModal}
+            rooms={rooms}
+            bookings={bookings}
+          />
         )}
-        {tab === "rooms" && <RoomsTab setModal={setModal} />}
-        {tab === "reservations" && <ReservationsTab />}
-        {tab === "reports" && <ReportsTab />}
+        {tab === "rooms" && (
+          <RoomsTab
+            setModal={setModal}
+            rooms={rooms}
+            refreshData={fetchDashboardData}
+          />
+        )}
+        {tab === "reservations" && (
+          <ReservationsTab
+            bookings={bookings}
+            refreshData={fetchDashboardData}
+          />
+        )}
+        {tab === "reports" && <ReportsTab bookings={bookings} />}
       </Shell>
     </>
   );
