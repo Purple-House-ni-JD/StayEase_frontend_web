@@ -1,11 +1,84 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import {
+  Calendar,
+  Users,
+  MapPin,
+  Search,
+  Wifi,
+  Coffee,
+  Dumbbell,
+  Car,
+  ShieldCheck,
+  Tv,
+  Star,
+  Award,
+  Heart,
+  Key,
+} from "lucide-react";
 import { C } from "../constants";
-import { ROOMS, AMENITIES } from "../data";
+import { ROOMS } from "../data"; // Kept as a safe fallback!
 import { GBar, Logo } from "../components/UI";
 import TopNav from "../components/TopNav";
 import RoomCard from "../components/RoomCard";
+import { roomsService } from "../api/rooms";
 
 const Landing = ({ setPage }) => {
+  const [dynamicRooms, setDynamicRooms] = useState([]);
+
+  // NEW: Make the landing page dynamic! Pull the actual rooms from the Django DB.
+  useEffect(() => {
+    const loadRooms = async () => {
+      try {
+        const fetchFunc = roomsService.list
+          ? roomsService.list
+          : roomsService.getRooms;
+        const res = await fetchFunc();
+        const allRooms = Array.isArray(res) ? res : res?.results || [];
+        // Only grab the first 3 for the "Featured" section
+        if (allRooms.length > 0) {
+          setDynamicRooms(allRooms.slice(0, 3));
+        }
+      } catch (e) {
+        console.error(
+          "Failed to load dynamic rooms on landing, falling back to mock data.",
+        );
+      }
+    };
+    loadRooms();
+  }, []);
+
+  // Use DB rooms if available, otherwise safely fall back to static data
+  const displayRooms =
+    dynamicRooms.length > 0 ? dynamicRooms : ROOMS.slice(0, 3);
+
+  // NEW: Premium Lucide Icons for Amenities
+  const LUXURY_AMENITIES = [
+    {
+      l: "High-Speed WiFi",
+      i: <Wifi size={32} strokeWidth={1.5} color={C.secondary} />,
+    },
+    {
+      l: "Premium Dining",
+      i: <Coffee size={32} strokeWidth={1.5} color={C.secondary} />,
+    },
+    {
+      l: "Fitness Center",
+      i: <Dumbbell size={32} strokeWidth={1.5} color={C.secondary} />,
+    },
+    {
+      l: "Secure Valet",
+      i: <Car size={32} strokeWidth={1.5} color={C.secondary} />,
+    },
+    {
+      l: "24/7 Security",
+      i: <ShieldCheck size={32} strokeWidth={1.5} color={C.secondary} />,
+    },
+    {
+      l: "Smart Rooms",
+      i: <Tv size={32} strokeWidth={1.5} color={C.secondary} />,
+    },
+  ];
+
   return (
     <div style={{ background: C.bg }}>
       <TopNav setPage={setPage} />
@@ -62,9 +135,12 @@ const Landing = ({ setPage }) => {
                   fontWeight: 700,
                   letterSpacing: ".18em",
                   textTransform: "uppercase",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
                 }}
               >
-                Premium Accommodation · CDO
+                <MapPin size={12} /> Premium Accommodation · CDO
               </span>
             </div>
             <h1
@@ -112,7 +188,11 @@ const Landing = ({ setPage }) => {
               </button>
               <span
                 className="sans ul"
-                style={{ color: "rgba(255,255,255,.7)", fontSize: ".88rem" }}
+                style={{
+                  color: "rgba(255,255,255,.7)",
+                  fontSize: ".88rem",
+                  cursor: "pointer",
+                }}
                 onClick={() => setPage("login")}
               >
                 Already have an account?{" "}
@@ -154,7 +234,20 @@ const Landing = ({ setPage }) => {
               ))}
             </div>
             <div>
-              <div style={{ color: C.secondary, fontSize: ".8rem" }}>★★★★★</div>
+              <div
+                style={{
+                  color: C.secondary,
+                  fontSize: ".8rem",
+                  display: "flex",
+                  gap: 2,
+                }}
+              >
+                <Star size={12} fill="currentColor" />
+                <Star size={12} fill="currentColor" />
+                <Star size={12} fill="currentColor" />
+                <Star size={12} fill="currentColor" />
+                <Star size={12} fill="currentColor" />
+              </div>
               <div
                 className="sans"
                 style={{
@@ -162,6 +255,7 @@ const Landing = ({ setPage }) => {
                   fontSize: ".65rem",
                   letterSpacing: ".1em",
                   textTransform: "uppercase",
+                  marginTop: 2,
                 }}
               >
                 2k+ Premium Club Reviews
@@ -199,61 +293,98 @@ const Landing = ({ setPage }) => {
           </h3>
           <GBar w={36} my={12} />
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {[
-              ["Check-in", "date"],
-              ["Check-out", "date"],
-            ].map(([l, t]) => (
-              <div key={l}>
-                <label
-                  className="lbl"
-                  style={{ color: "rgba(255,255,255,.45)" }}
-                >
-                  {l}
-                </label>
-                <input type={t} className="inp-d" />
-              </div>
-            ))}
+            {/* Check In */}
             <div>
               <label className="lbl" style={{ color: "rgba(255,255,255,.45)" }}>
-                Room Type
+                Check-in
               </label>
-              <select
-                className="inp-d"
-                style={{
-                  color: "rgba(255,255,255,.7)",
-                  background: "rgba(255,255,255,.06)",
-                }}
-              >
-                <option value="">Any Type</option>
-                {["Standard", "Deluxe", "Suite", "Villa", "Family"].map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
+              <div style={{ position: "relative" }}>
+                <Calendar
+                  size={16}
+                  color="rgba(255,255,255,.5)"
+                  style={{
+                    position: "absolute",
+                    left: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                  }}
+                />
+                <input
+                  type="date"
+                  className="inp-d"
+                  style={{ paddingLeft: 38 }}
+                />
+              </div>
             </div>
+            {/* Check Out */}
+            <div>
+              <label className="lbl" style={{ color: "rgba(255,255,255,.45)" }}>
+                Check-out
+              </label>
+              <div style={{ position: "relative" }}>
+                <Calendar
+                  size={16}
+                  color="rgba(255,255,255,.5)"
+                  style={{
+                    position: "absolute",
+                    left: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                  }}
+                />
+                <input
+                  type="date"
+                  className="inp-d"
+                  style={{ paddingLeft: 38 }}
+                />
+              </div>
+            </div>
+
+            {/* Guests */}
             <div>
               <label className="lbl" style={{ color: "rgba(255,255,255,.45)" }}>
                 Guests
               </label>
-              <select
-                className="inp-d"
-                style={{
-                  color: "rgba(255,255,255,.7)",
-                  background: "rgba(255,255,255,.06)",
-                }}
-              >
-                {[1, 2, 3, 4].map((n) => (
-                  <option key={n}>
-                    {n} Guest{n > 1 ? "s" : ""}
-                  </option>
-                ))}
-              </select>
+              <div style={{ position: "relative" }}>
+                <Users
+                  size={16}
+                  color="rgba(255,255,255,.5)"
+                  style={{
+                    position: "absolute",
+                    left: 12,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                  }}
+                />
+                <select
+                  className="inp-d"
+                  style={{
+                    color: "rgba(255,255,255,.7)",
+                    background: "rgba(255,255,255,.06)",
+                    paddingLeft: 38,
+                  }}
+                >
+                  {[1, 2, 3, 4].map((n) => (
+                    <option key={n} style={{ color: C.primary }}>
+                      {n} Guest{n > 1 ? "s" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             <button
               className="btn-g"
-              style={{ marginTop: 6, padding: "13px" }}
+              style={{
+                marginTop: 6,
+                padding: "13px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
               onClick={() => setPage("register")}
             >
-              Search Rooms
+              <Search size={16} /> Search Rooms
             </button>
           </div>
         </div>
@@ -302,7 +433,7 @@ const Landing = ({ setPage }) => {
             gap: 28,
           }}
         >
-          {ROOMS.slice(0, 3).map((r) => (
+          {displayRooms.map((r) => (
             <RoomCard key={r.id} room={r} onBook={() => setPage("register")} />
           ))}
         </div>
@@ -376,7 +507,7 @@ const Landing = ({ setPage }) => {
             gap: 20,
           }}
         >
-          {AMENITIES.map((a) => (
+          {LUXURY_AMENITIES.map((a) => (
             <div
               key={a.l}
               className="lift"
@@ -386,12 +517,20 @@ const Landing = ({ setPage }) => {
                 borderRadius: 12,
                 padding: "28px 20px",
                 textAlign: "center",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
               }}
             >
-              <div style={{ fontSize: "1.8rem", marginBottom: 12 }}>{a.i}</div>
+              <div style={{ marginBottom: 16 }}>{a.i}</div>
               <div
                 className="sans"
-                style={{ color: "rgba(255,255,255,.75)", fontSize: ".85rem" }}
+                style={{
+                  color: "rgba(255,255,255,.8)",
+                  fontSize: ".85rem",
+                  fontWeight: 500,
+                  letterSpacing: ".02em",
+                }}
               >
                 {a.l}
               </div>
@@ -416,12 +555,24 @@ const Landing = ({ setPage }) => {
           }}
         >
           {[
-            ["250+", "Rooms Available"],
-            ["4.9★", "Guest Rating"],
-            ["12K+", "Happy Guests"],
-            ["15+", "Years of Excellence"],
-          ].map(([v, l]) => (
-            <div key={l}>
+            ["250+", "Rooms Available", <Key size={24} color={C.primary} />],
+            ["4.9★", "Guest Rating", <Star size={24} color={C.primary} />],
+            ["12K+", "Happy Guests", <Heart size={24} color={C.primary} />],
+            [
+              "15+",
+              "Years of Excellence",
+              <Award size={24} color={C.primary} />,
+            ],
+          ].map(([v, l, icon]) => (
+            <div
+              key={l}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+            >
+              <div style={{ marginBottom: 12, opacity: 0.8 }}>{icon}</div>
               <div
                 className="serif"
                 style={{
@@ -440,7 +591,8 @@ const Landing = ({ setPage }) => {
                   fontSize: ".78rem",
                   letterSpacing: ".1em",
                   textTransform: "uppercase",
-                  marginTop: 6,
+                  marginTop: 8,
+                  fontWeight: 600,
                 }}
               >
                 {l}

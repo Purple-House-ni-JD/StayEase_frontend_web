@@ -1,14 +1,13 @@
 import { useState, useEffect } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
-  Sparkles,
+  Compass,
   ShoppingCart,
   ClipboardList,
   User as UserIcon,
   Search,
   X,
-  Check,
   CreditCard,
-  Smartphone,
   BellRing,
   Trash2,
   Wifi,
@@ -16,6 +15,9 @@ import {
   Coffee,
   Tv,
   LogOut,
+  ArrowLeft,
+  ShieldCheck,
+  Lock,
 } from "lucide-react";
 import { C } from "../constants";
 import { Badge } from "../components/UI";
@@ -24,9 +26,10 @@ import RoomCard from "../components/RoomCard";
 import { useAuth } from "../context/AuthContext";
 import { roomsService } from "../api/rooms";
 import { bookingsService } from "../api/bookings";
+import { wishlistService } from "../api/wishlist";
 
 const navItems = [
-  { id: "home", icon: <Sparkles size={18} />, label: "Discover" },
+  { id: "home", icon: <Compass size={18} />, label: "Discover" },
   { id: "cart", icon: <ShoppingCart size={18} />, label: "Reservation Cart" },
   { id: "bookings", icon: <ClipboardList size={18} />, label: "My Stays" },
   { id: "profile", icon: <UserIcon size={18} />, label: "Profile" },
@@ -35,11 +38,14 @@ const navItems = [
 const CATS = ["All", "Standard", "Deluxe", "Suite", "Villa", "Family"];
 
 /* ── PREMIUM ROOM DETAILS MODAL ── */
-const RoomDetailsModal = ({ room, onClose, inCart, onToggleCart }) => {
+const RoomDetailsModal = ({ room, onClose, inCart, onToggleCart, setTab }) => {
   let imageUrl =
     "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=600&q=80";
   if (room.image_urls && room.image_urls.length > 0)
     imageUrl = room.image_urls[0].image_url || room.image_urls[0];
+  const price = parseFloat(
+    room.price_per_night || room.price || room.pricePerNight || 0,
+  );
 
   return (
     <div
@@ -94,14 +100,7 @@ const RoomDetailsModal = ({ room, onClose, inCart, onToggleCart }) => {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              transition: "background 0.2s",
             }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "rgba(255,255,255,0.4)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "rgba(255,255,255,0.2)")
-            }
           >
             <X size={20} />
           </button>
@@ -157,7 +156,7 @@ const RoomDetailsModal = ({ room, onClose, inCart, onToggleCart }) => {
                   fontWeight: 700,
                 }}
               >
-                ₱{parseFloat(room.price_per_night).toLocaleString()}
+                ₱{price.toLocaleString()}
               </div>
               <div
                 className="sans"
@@ -182,7 +181,7 @@ const RoomDetailsModal = ({ room, onClose, inCart, onToggleCart }) => {
             }}
           >
             {room.description ||
-              "Experience ultimate luxury in our beautifully appointed room, designed to provide unparalleled comfort and relaxation."}
+              "Experience ultimate luxury in our beautifully appointed room."}
           </p>
 
           <h4
@@ -247,14 +246,18 @@ const RoomDetailsModal = ({ room, onClose, inCart, onToggleCart }) => {
               color: inCart ? C.red : "",
               fontWeight: 600,
               letterSpacing: ".05em",
-              transition: "all 0.2s",
             }}
             onClick={() => {
-              onToggleCart(room);
+              if (!inCart) {
+                onToggleCart(room);
+                setTab("cart");
+              } else {
+                onToggleCart(room);
+              }
               onClose();
             }}
           >
-            {inCart ? "Remove from Reservation" : "Reserve This Room"}
+            {inCart ? "Remove from Reservation" : "Review in Cart →"}
           </button>
         </div>
       </div>
@@ -397,55 +400,38 @@ const RoomListings = ({
   );
 };
 
-/* ── PREMIUM CART & CHECKOUT TAB ── */
-const CartTab = ({ cart, setCart, setTab, refreshData }) => {
-  const [checkIn, setCheckIn] = useState("");
-  const [checkOut, setCheckOut] = useState("");
-  const [guests, setGuests] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState("Credit Card");
-  const [loading, setLoading] = useState(false);
+/* ── CART TAB (Step 1) ── */
+const CartTab = ({
+  cart,
+  toggleCart,
+  setTab,
+  checkIn,
+  setCheckIn,
+  checkOut,
+  setCheckOut,
+  guests,
+  setGuests,
+}) => {
+  let actualNights = 0;
+  if (checkIn && checkOut) {
+    const ci = new Date(checkIn);
+    const co = new Date(checkOut);
+    if (co > ci) actualNights = Math.ceil((co - ci) / (1000 * 60 * 60 * 24));
+  }
 
-  const checkInDate = new Date(checkIn);
-  const checkOutDate = new Date(checkOut);
-  const nights =
-    checkIn && checkOut && checkOutDate > checkInDate
-      ? Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24))
-      : 0;
+  const now = new Date();
+  const todayDateStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString()
+    .split("T")[0];
+  const minCheckOutDate = checkIn ? checkIn : todayDateStr;
 
+  const displayNights = actualNights > 0 ? actualNights : 1;
   const totalRoomPrice = cart.reduce(
-    (sum, r) => sum + parseFloat(r.price_per_night || 0),
+    (sum, r) =>
+      sum + parseFloat(r.price_per_night || r.price || r.pricePerNight || 0),
     0,
   );
-  const totalPrice = nights > 0 ? totalRoomPrice * nights : 0;
-
-  const PAY_METHODS = [
-    { id: "Credit Card", icon: <CreditCard size={28} /> },
-    { id: "GCash", icon: <Smartphone size={28} /> },
-    { id: "Pay-at-Hotel", label: "Pay at Hotel", icon: <BellRing size={28} /> },
-  ];
-
-  const handleCheckout = async () => {
-    if (!checkIn || !checkOut || nights <= 0)
-      return alert("Please select valid dates.");
-    setLoading(true);
-    try {
-      await bookingsService.create({
-        room_ids: cart.map((r) => r.id),
-        check_in: checkIn,
-        check_out: checkOut,
-        guest_count: guests,
-        payment_method: paymentMethod,
-      });
-      alert("Reservation Confirmed! Thank you for choosing StayEase.");
-      setCart([]);
-      refreshData();
-      setTab("bookings");
-    } catch (err) {
-      alert("Failed to secure reservation. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const displayTotalPrice = totalRoomPrice * displayNights;
 
   return (
     <div className="fi">
@@ -460,7 +446,7 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
           className="sans"
           style={{ color: C.gray, marginTop: 4, fontSize: ".9rem" }}
         >
-          Complete your booking details below.
+          Review your selected rooms and dates.
         </p>
       </div>
 
@@ -471,19 +457,13 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
             padding: "60px 20px",
             background: C.neutral,
             borderRadius: 20,
-            boxShadow: "0 10px 30px rgba(10,29,55,.04)",
           }}
         >
-          <div
-            style={{
-              color: C.grayL,
-              marginBottom: 20,
-              display: "flex",
-              justifyContent: "center",
-            }}
-          >
-            <ShoppingCart size={64} />
-          </div>
+          <ShoppingCart
+            size={64}
+            color={C.grayL}
+            style={{ margin: "0 auto 20px" }}
+          />
           <h3
             className="serif"
             style={{
@@ -495,12 +475,9 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
           >
             Your cart is empty
           </h3>
-          <p className="sans" style={{ color: C.gray, marginBottom: 24 }}>
-            Explore our premium rooms and suites to start your journey.
-          </p>
           <button
             className="btn-p"
-            style={{ padding: "12px 32px", borderRadius: 50 }}
+            style={{ padding: "12px 32px", borderRadius: 50, marginTop: 10 }}
             onClick={() => setTab("home")}
           >
             Discover Rooms
@@ -529,6 +506,9 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                 "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=600&q=80";
               if (r.image_urls && r.image_urls.length > 0)
                 imageUrl = r.image_urls[0].image_url || r.image_urls[0];
+              const price = parseFloat(
+                r.price_per_night || r.price || r.pricePerNight || 0,
+              );
               return (
                 <div
                   key={r.id}
@@ -539,7 +519,6 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                     display: "flex",
                     gap: 20,
                     alignItems: "center",
-                    boxShadow: "0 4px 20px rgba(10,29,55,.04)",
                     border: `1px solid ${C.grayL}`,
                   }}
                 >
@@ -549,7 +528,6 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                       height: 100,
                       borderRadius: 12,
                       overflow: "hidden",
-                      background: C.grayXL,
                     }}
                   >
                     <img
@@ -595,7 +573,7 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                         fontWeight: 700,
                       }}
                     >
-                      ₱{parseFloat(r.price_per_night || 0).toLocaleString()}{" "}
+                      ₱{price.toLocaleString()}{" "}
                       <span
                         className="sans"
                         style={{
@@ -609,29 +587,12 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                     </div>
                   </div>
                   <button
-                    onClick={() =>
-                      setCart((prev) => prev.filter((c) => c.id !== r.id))
-                    }
+                    onClick={() => toggleCart(r)}
                     style={{
                       background: "transparent",
                       color: C.gray,
                       border: "none",
-                      width: 40,
-                      height: 40,
-                      borderRadius: 50,
                       cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      transition: "all 0.2s",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "#FEE2E2";
-                      e.currentTarget.style.color = C.red;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "transparent";
-                      e.currentTarget.style.color = C.gray;
                     }}
                   >
                     <Trash2 size={20} />
@@ -648,7 +609,6 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
               background: C.neutral,
               borderRadius: 20,
               padding: 32,
-              boxShadow: "0 10px 40px rgba(10,29,55,.08)",
               border: `1px solid ${C.grayL}`,
             }}
           >
@@ -694,19 +654,18 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                       color: C.gray,
                       fontWeight: 600,
                       textTransform: "uppercase",
-                      marginBottom: 4,
                     }}
                   >
                     Check-In
                   </label>
                   <input
                     type="date"
+                    min={todayDateStr}
                     style={{
                       width: "100%",
                       background: "transparent",
                       border: "none",
                       outline: "none",
-                      fontFamily: "DM Sans,sans-serif",
                       color: C.primary,
                       fontWeight: 500,
                     }}
@@ -729,19 +688,18 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                       color: C.gray,
                       fontWeight: 600,
                       textTransform: "uppercase",
-                      marginBottom: 4,
                     }}
                   >
                     Check-Out
                   </label>
                   <input
                     type="date"
+                    min={minCheckOutDate}
                     style={{
                       width: "100%",
                       background: "transparent",
                       border: "none",
                       outline: "none",
-                      fontFamily: "DM Sans,sans-serif",
                       color: C.primary,
                       fontWeight: 500,
                     }}
@@ -750,7 +708,6 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                   />
                 </div>
               </div>
-
               <div
                 style={{
                   background: C.grayXL,
@@ -766,7 +723,6 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                     color: C.gray,
                     fontWeight: 600,
                     textTransform: "uppercase",
-                    marginBottom: 4,
                   }}
                 >
                   Total Guests
@@ -779,7 +735,6 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                     background: "transparent",
                     border: "none",
                     outline: "none",
-                    fontFamily: "DM Sans,sans-serif",
                     color: C.primary,
                     fontWeight: 500,
                   }}
@@ -787,67 +742,6 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                   onChange={(e) => setGuests(e.target.value)}
                 />
               </div>
-            </div>
-
-            <h3
-              className="serif"
-              style={{
-                color: C.primary,
-                fontSize: "1.1rem",
-                fontWeight: 600,
-                marginBottom: 16,
-              }}
-            >
-              Payment Method
-            </h3>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
-                marginBottom: 32,
-              }}
-            >
-              {PAY_METHODS.map((pm) => (
-                <div
-                  key={pm.id}
-                  onClick={() => setPaymentMethod(pm.id)}
-                  style={{
-                    border: `2px solid ${paymentMethod === pm.id ? C.secondary : C.grayL}`,
-                    background:
-                      paymentMethod === pm.id
-                        ? "rgba(197,160,89,.05)"
-                        : "transparent",
-                    padding: "16px 12px",
-                    borderRadius: 12,
-                    cursor: "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 12,
-                    transition: "all 0.2s",
-                  }}
-                >
-                  <div
-                    style={{
-                      color: paymentMethod === pm.id ? C.secondary : C.gray,
-                    }}
-                  >
-                    {pm.icon}
-                  </div>
-                  <span
-                    className="sans"
-                    style={{
-                      fontSize: ".75rem",
-                      fontWeight: paymentMethod === pm.id ? 700 : 500,
-                      color: C.primary,
-                      textAlign: "center",
-                    }}
-                  >
-                    {pm.label || pm.id}
-                  </span>
-                </div>
-              ))}
             </div>
 
             <div
@@ -866,49 +760,15 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                   color: C.gray,
                 }}
               >
-                <span>Subtotal ({nights} nights)</span>
+                <span>
+                  Subtotal (
+                  {actualNights > 0
+                    ? `${actualNights} nights`
+                    : "1 night estimate"}
+                  )
+                </span>
                 <span style={{ color: C.primary }}>
-                  ₱{totalPrice.toLocaleString()}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 16,
-                  fontSize: ".9rem",
-                  color: C.gray,
-                }}
-              >
-                <span>Taxes & Fees</span>
-                <span style={{ color: C.primary }}>Included</span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                }}
-              >
-                <span
-                  className="serif"
-                  style={{
-                    fontWeight: 600,
-                    color: C.primary,
-                    fontSize: "1.2rem",
-                  }}
-                >
-                  Total
-                </span>
-                <span
-                  className="serif"
-                  style={{
-                    fontWeight: 700,
-                    color: C.primary,
-                    fontSize: "1.6rem",
-                  }}
-                >
-                  ₱{totalPrice.toLocaleString()}
+                  ₱{displayTotalPrice.toLocaleString()}
                 </span>
               </div>
             </div>
@@ -921,12 +781,16 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
                 fontSize: "1rem",
                 borderRadius: 12,
                 fontWeight: 600,
-                letterSpacing: ".05em",
               }}
-              onClick={handleCheckout}
-              disabled={loading || nights <= 0}
+              onClick={() => {
+                if (!checkIn || !checkOut || actualNights <= 0)
+                  return alert(
+                    "Please select valid Check-In and Check-Out dates before proceeding.",
+                  );
+                setTab("checkout");
+              }}
             >
-              {loading ? "Processing..." : `Complete Reservation`}
+              Proceed to Checkout
             </button>
           </div>
         </div>
@@ -935,131 +799,905 @@ const CartTab = ({ cart, setCart, setTab, refreshData }) => {
   );
 };
 
-/* ── BOOKINGS TAB ── */
-const BookingsTab = ({ bookings }) => (
-  <div className="fi">
-    <div style={{ marginBottom: 32 }}>
-      <h2
-        className="serif"
-        style={{ color: C.primary, fontSize: "2rem", fontWeight: 600 }}
+/* ── CHECKOUT TAB (Step 2) ── */
+const CheckoutTab = ({
+  cart,
+  setCart,
+  setTab,
+  setPage,
+  navigate,
+  refreshData,
+  checkIn,
+  checkOut,
+  guests,
+  user,
+  setReceiptData,
+}) => {
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [loading, setLoading] = useState(false);
+
+  const ci = new Date(checkIn);
+  const co = new Date(checkOut);
+  const nights = Math.ceil((co - ci) / (1000 * 60 * 60 * 24));
+  const totalRoomPrice = cart.reduce(
+    (sum, r) =>
+      sum + parseFloat(r.price_per_night || r.price || r.pricePerNight || 0),
+    0,
+  );
+  const totalPrice = totalRoomPrice * nights;
+
+  const PAY_METHODS = [
+    { id: "card", label: "Card", icon: <CreditCard size={28} /> },
+    { id: "cash", label: "Cash", icon: <BellRing size={28} /> },
+  ];
+
+  const handleCheckout = async () => {
+    setLoading(true);
+    try {
+      const payload = {
+        room_ids: cart.map((r) => parseInt(r.id, 10)),
+        check_in: checkIn,
+        check_out: checkOut,
+        guest_count: parseInt(guests, 10),
+        payment_method: paymentMethod,
+        total_price: totalPrice,
+      };
+
+      console.log("Sending payload:", JSON.stringify(payload, null, 2));
+
+      const res = await bookingsService.create(payload);
+      console.log("Booking response:", res);
+
+      for (const r of cart) {
+        try {
+          await wishlistService.remove(r.id);
+        } catch (e) {}
+      }
+
+      setReceiptData({
+        ref:
+          res?.booking_ref ||
+          res?.[0]?.booking_ref ||
+          `SE-${Math.floor(Math.random() * 100000)}`,
+        total: totalPrice,
+        checkIn,
+        checkOut,
+        nights,
+        guests,
+      });
+
+      setCart([]);
+      refreshData();
+      navigate("/receipt");
+    } catch (err) {
+      console.error("Full error object:", err);
+      console.error("err.response:", err?.response);
+      console.error("err.response.data:", err?.response?.data);
+      console.error("err.response.status:", err?.response?.status);
+
+      let errorMsg = "Failed to secure reservation.";
+      if (err?.response?.data) {
+        errorMsg =
+          typeof err.response.data === "object"
+            ? JSON.stringify(err.response.data, null, 2)
+            : err.response.data;
+      } else if (err?.message) {
+        errorMsg = err.message;
+      }
+      alert(`Backend Error:\n${errorMsg}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fi">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          marginBottom: 32,
+        }}
       >
-        My Stays
-      </h2>
-      <p
-        className="sans"
-        style={{ color: C.gray, marginTop: 4, fontSize: ".9rem" }}
-      >
-        Manage your upcoming and past reservations.
-      </p>
-    </div>
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {bookings.length === 0 ? (
-        <div
+        <button
+          onClick={() => setTab("cart")}
           style={{
-            textAlign: "center",
-            padding: "60px 20px",
             background: C.neutral,
-            borderRadius: 20,
+            border: `1px solid ${C.grayL}`,
+            borderRadius: "50%",
+            width: 40,
+            height: 40,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: C.primary,
           }}
         >
-          <p className="sans" style={{ color: C.gray, fontSize: "1.1rem" }}>
-            You have no reservations yet.
+          <ArrowLeft size={20} />
+        </button>
+        <div>
+          <h2
+            className="serif"
+            style={{ color: C.primary, fontSize: "2rem", fontWeight: 600 }}
+          >
+            Secure Checkout
+          </h2>
+          <p
+            className="sans"
+            style={{ color: C.gray, marginTop: 4, fontSize: ".9rem" }}
+          >
+            Finalize your payment to secure your stay.
           </p>
         </div>
-      ) : (
-        bookings.map((b) => (
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 32,
+          flexWrap: "wrap",
+          alignItems: "flex-start",
+        }}
+      >
+        <div
+          style={{
+            flex: 2,
+            minWidth: 320,
+            display: "flex",
+            flexDirection: "column",
+            gap: 24,
+          }}
+        >
           <div
-            key={b.id}
-            className="lift"
             style={{
               background: C.neutral,
-              borderRadius: 16,
-              padding: "24px 32px",
-              display: "flex",
-              gap: 24,
-              alignItems: "center",
-              boxShadow: "0 4px 20px rgba(10,29,55,.04)",
+              borderRadius: 20,
+              padding: 32,
               border: `1px solid ${C.grayL}`,
+              boxShadow: "0 4px 20px rgba(10,29,55,.04)",
             }}
           >
-            <div style={{ flex: 1 }}>
+            <h3
+              className="serif"
+              style={{
+                color: C.primary,
+                fontSize: "1.3rem",
+                fontWeight: 600,
+                marginBottom: 20,
+              }}
+            >
+              1. Guest Information
+            </h3>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 16,
+              }}
+            >
+              <div>
+                <label className="lbl">First Name</label>
+                <input
+                  type="text"
+                  className="inp"
+                  value={user?.first_name || ""}
+                  disabled
+                  style={{ background: C.grayXL, color: C.gray }}
+                />
+              </div>
+              <div>
+                <label className="lbl">Last Name</label>
+                <input
+                  type="text"
+                  className="inp"
+                  value={user?.last_name || ""}
+                  disabled
+                  style={{ background: C.grayXL, color: C.gray }}
+                />
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label className="lbl">Email Address</label>
+                <input
+                  type="email"
+                  className="inp"
+                  value={user?.email || ""}
+                  disabled
+                  style={{ background: C.grayXL, color: C.gray }}
+                />
+              </div>
+            </div>
+            <p
+              className="sans"
+              style={{
+                color: C.gray,
+                fontSize: ".8rem",
+                marginTop: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <ShieldCheck size={14} color={C.secondary} /> Your information is
+              securely encrypted.
+            </p>
+          </div>
+
+          <div
+            style={{
+              background: C.neutral,
+              borderRadius: 20,
+              padding: 32,
+              border: `1px solid ${C.grayL}`,
+              boxShadow: "0 4px 20px rgba(10,29,55,.04)",
+            }}
+          >
+            <h3
+              className="serif"
+              style={{
+                color: C.primary,
+                fontSize: "1.3rem",
+                fontWeight: 600,
+                marginBottom: 20,
+              }}
+            >
+              2. Payment Method
+            </h3>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                gap: 12,
+                marginBottom: 24,
+              }}
+            >
+              {PAY_METHODS.map((pm) => (
+                <div
+                  key={pm.id}
+                  onClick={() => setPaymentMethod(pm.id)}
+                  style={{
+                    border: `2px solid ${
+                      paymentMethod === pm.id ? C.secondary : C.grayL
+                    }`,
+                    background:
+                      paymentMethod === pm.id
+                        ? "rgba(197,160,89,.05)"
+                        : "transparent",
+                    padding: "16px 12px",
+                    borderRadius: 12,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      color: paymentMethod === pm.id ? C.secondary : C.gray,
+                    }}
+                  >
+                    {pm.icon}
+                  </div>
+                  <span
+                    className="sans"
+                    style={{
+                      fontSize: ".8rem",
+                      fontWeight: paymentMethod === pm.id ? 700 : 500,
+                      color: C.primary,
+                    }}
+                  >
+                    {pm.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* RESTORED: Card Details Form */}
+            {paymentMethod === "card" && (
               <div
+                style={{
+                  padding: 20,
+                  background: C.grayXL,
+                  borderRadius: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 16,
+                }}
+              >
+                <div>
+                  <label className="lbl">Card Number</label>
+                  <input
+                    type="text"
+                    className="inp"
+                    placeholder="0000 0000 0000 0000"
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 16,
+                  }}
+                >
+                  <div>
+                    <label className="lbl">Expiry Date</label>
+                    <input type="text" className="inp" placeholder="MM/YY" />
+                  </div>
+                  <div>
+                    <label className="lbl">CVC</label>
+                    <input type="text" className="inp" placeholder="123" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            flex: 1,
+            minWidth: 320,
+            background: C.neutral,
+            borderRadius: 20,
+            padding: 32,
+            border: `1px solid ${C.grayL}`,
+            boxShadow: "0 10px 40px rgba(10,29,55,.08)",
+          }}
+        >
+          <h3
+            className="serif"
+            style={{
+              color: C.primary,
+              fontSize: "1.3rem",
+              fontWeight: 600,
+              marginBottom: 24,
+            }}
+          >
+            Order Summary
+          </h3>
+
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+              marginBottom: 24,
+            }}
+          >
+            {cart.map((r) => (
+              <div
+                key={r.id}
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "flex-start",
-                  marginBottom: 12,
+                  borderBottom: `1px solid ${C.grayXL}`,
+                  paddingBottom: 12,
                 }}
               >
                 <div>
                   <div
-                    className="sans"
-                    style={{
-                      color: C.gray,
-                      fontSize: ".7rem",
-                      textTransform: "uppercase",
-                      letterSpacing: ".1em",
-                      marginBottom: 4,
-                    }}
-                  >
-                    Booking Ref: {b.booking_ref}
-                  </div>
-                  <h4
                     className="serif"
                     style={{
                       color: C.primary,
-                      fontSize: "1.2rem",
                       fontWeight: 600,
+                      fontSize: ".95rem",
                     }}
                   >
-                    StayEase Reservation
-                  </h4>
+                    {r.name}
+                  </div>
+                  <div
+                    className="sans"
+                    style={{ color: C.gray, fontSize: ".75rem", marginTop: 2 }}
+                  >
+                    {r.category}
+                  </div>
                 </div>
-                <Badge s={b.status} />
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  paddingTop: 12,
-                  borderTop: `1px dashed ${C.grayL}`,
-                }}
-              >
-                <span
-                  className="sans"
-                  style={{ color: C.gray, fontSize: ".85rem", fontWeight: 500 }}
-                >
-                  <span style={{ color: C.primary }}>{b.check_in}</span>{" "}
-                  &nbsp;→&nbsp;{" "}
-                  <span style={{ color: C.primary }}>{b.check_out}</span>{" "}
-                  &nbsp;&nbsp;|&nbsp;&nbsp; 👥 {b.guest_count} Guests
-                </span>
-                <span
-                  className="serif"
-                  style={{
-                    color: C.secondary,
-                    fontSize: "1.3rem",
-                    fontWeight: 700,
-                  }}
-                >
-                  ₱{parseFloat(b.total_price || 0).toLocaleString()}
-                </span>
-              </div>
+            ))}
+          </div>
+
+          <div
+            style={{
+              background: C.grayXL,
+              borderRadius: 8,
+              padding: 16,
+              marginBottom: 24,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 8,
+                fontSize: ".85rem",
+                color: C.gray,
+              }}
+            >
+              <span>Dates</span>
+              <span style={{ color: C.primary, fontWeight: 500 }}>
+                {checkIn} to {checkOut}
+              </span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 8,
+                fontSize: ".85rem",
+                color: C.gray,
+              }}
+            >
+              <span>Duration</span>
+              <span style={{ color: C.primary, fontWeight: 500 }}>
+                {nights} nights
+              </span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: ".85rem",
+                color: C.gray,
+              }}
+            >
+              <span>Guests</span>
+              <span style={{ color: C.primary, fontWeight: 500 }}>
+                {guests} Guests
+              </span>
             </div>
           </div>
-        ))
-      )}
+
+          <div
+            style={{
+              borderTop: `1px dashed ${C.grayL}`,
+              paddingTop: 20,
+              marginBottom: 24,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 12,
+                fontSize: ".9rem",
+                color: C.gray,
+              }}
+            >
+              <span>Subtotal</span>
+              <span style={{ color: C.primary }}>
+                ₱{totalPrice.toLocaleString()}
+              </span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+              }}
+            >
+              <span
+                className="serif"
+                style={{
+                  fontWeight: 600,
+                  color: C.primary,
+                  fontSize: "1.2rem",
+                }}
+              >
+                Total
+              </span>
+              <span
+                className="serif"
+                style={{
+                  fontWeight: 700,
+                  color: C.primary,
+                  fontSize: "1.6rem",
+                }}
+              >
+                ₱{totalPrice.toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          <button
+            className="btn-p"
+            style={{
+              width: "100%",
+              padding: "16px",
+              fontSize: "1rem",
+              borderRadius: 12,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+            onClick={handleCheckout}
+            disabled={loading}
+          >
+            {loading ? (
+              "Processing..."
+            ) : (
+              <>
+                <Lock size={18} /> Complete Reservation
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
+/* ── BOOKING DETAILS MODAL (NEW) ── */
+const BookingDetailsModal = ({ booking, onClose }) => {
+  if (!booking) return null;
+
+  return (
+    <div
+      className="mbg"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="lift"
+        style={{
+          background: C.neutral,
+          borderRadius: 24,
+          width: "100%",
+          maxWidth: 480,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          padding: 32,
+          boxShadow: "0 20px 40px rgba(0,0,0,0.15)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 24,
+          }}
+        >
+          <h2
+            className="serif"
+            style={{ color: C.primary, fontSize: "1.6rem", fontWeight: 600 }}
+          >
+            Stay Details
+          </h2>
+          <button
+            onClick={onClose}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: C.gray,
+            }}
+          >
+            <X size={24} />
+          </button>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            paddingBottom: 16,
+            borderBottom: `1px solid ${C.grayXL}`,
+          }}
+        >
+          <div>
+            <div
+              className="sans"
+              style={{
+                color: C.gray,
+                fontSize: ".75rem",
+                textTransform: "uppercase",
+                letterSpacing: ".05em",
+              }}
+            >
+              Reference ID
+            </div>
+            <div
+              className="serif"
+              style={{
+                color: C.primary,
+                fontSize: "1.2rem",
+                fontWeight: 700,
+              }}
+            >
+              {booking.booking_ref}
+            </div>
+          </div>
+          <Badge s={booking.status} />
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 16,
+            marginTop: 24,
+          }}
+        >
+          <div style={{ background: C.grayXL, padding: 16, borderRadius: 12 }}>
+            <div
+              className="sans"
+              style={{
+                color: C.gray,
+                fontSize: ".7rem",
+                textTransform: "uppercase",
+                letterSpacing: ".05em",
+                marginBottom: 4,
+              }}
+            >
+              Check-In
+            </div>
+            <div
+              className="sans"
+              style={{ color: C.primary, fontSize: ".95rem", fontWeight: 600 }}
+            >
+              {booking.check_in}
+            </div>
+          </div>
+          <div style={{ background: C.grayXL, padding: 16, borderRadius: 12 }}>
+            <div
+              className="sans"
+              style={{
+                color: C.gray,
+                fontSize: ".7rem",
+                textTransform: "uppercase",
+                letterSpacing: ".05em",
+                marginBottom: 4,
+              }}
+            >
+              Check-Out
+            </div>
+            <div
+              className="sans"
+              style={{ color: C.primary, fontSize: ".95rem", fontWeight: 600 }}
+            >
+              {booking.check_out}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginTop: 24,
+            paddingBottom: 16,
+            borderBottom: `1px solid ${C.grayXL}`,
+          }}
+        >
+          <div className="sans" style={{ color: C.gray, fontSize: ".9rem" }}>
+            Guests
+          </div>
+          <div className="sans" style={{ color: C.primary, fontWeight: 600 }}>
+            {booking.guest_count}
+          </div>
+        </div>
+
+        {booking.payment_method && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: 16,
+              paddingBottom: 16,
+              borderBottom: `1px solid ${C.grayXL}`,
+            }}
+          >
+            <div className="sans" style={{ color: C.gray, fontSize: ".9rem" }}>
+              Payment Method
+            </div>
+            <div
+              className="sans"
+              style={{
+                color: C.primary,
+                fontWeight: 600,
+                textTransform: "capitalize",
+              }}
+            >
+              {booking.payment_method.replace("_", " ")}
+            </div>
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            marginTop: 24,
+          }}
+        >
+          <div
+            className="serif"
+            style={{ color: C.primary, fontSize: "1.1rem", fontWeight: 600 }}
+          >
+            Total Amount
+          </div>
+          <div
+            className="serif"
+            style={{
+              color: C.secondary,
+              fontSize: "1.6rem",
+              fontWeight: 700,
+            }}
+          >
+            ₱{parseFloat(booking.total_price || 0).toLocaleString()}
+          </div>
+        </div>
+
+        <button
+          className="btn-p"
+          style={{
+            width: "100%",
+            padding: "14px",
+            marginTop: 32,
+            borderRadius: 12,
+            fontWeight: 600,
+          }}
+          onClick={onClose}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ── BOOKINGS TAB ── */
+const BookingsTab = ({ bookings }) => {
+  const [selectedBooking, setSelectedBooking] = useState(null);
+
+  return (
+    <div className="fi">
+      {/* RESTORED: Detailed Booking Modal */}
+      {selectedBooking && (
+        <BookingDetailsModal
+          booking={selectedBooking}
+          onClose={() => setSelectedBooking(null)}
+        />
+      )}
+
+      <div style={{ marginBottom: 32 }}>
+        <h2
+          className="serif"
+          style={{ color: C.primary, fontSize: "2rem", fontWeight: 600 }}
+        >
+          My Stays
+        </h2>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {bookings.length === 0 ? (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "60px 20px",
+              background: C.neutral,
+              borderRadius: 20,
+            }}
+          >
+            <p className="sans" style={{ color: C.gray, fontSize: "1.1rem" }}>
+              You have no reservations yet.
+            </p>
+          </div>
+        ) : (
+          bookings.map((b) => (
+            <div
+              key={b.id}
+              className="lift"
+              onClick={() => setSelectedBooking(b)} // Clicking opens the details modal
+              style={{
+                background: C.neutral,
+                borderRadius: 16,
+                padding: "24px 32px",
+                display: "flex",
+                gap: 24,
+                alignItems: "center",
+                border: `1px solid ${C.grayL}`,
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    marginBottom: 12,
+                  }}
+                >
+                  <div>
+                    <div
+                      className="sans"
+                      style={{
+                        color: C.gray,
+                        fontSize: ".7rem",
+                        textTransform: "uppercase",
+                        letterSpacing: ".1em",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Booking Ref: {b.booking_ref}
+                    </div>
+                    <h4
+                      className="serif"
+                      style={{
+                        color: C.primary,
+                        fontSize: "1.2rem",
+                        fontWeight: 600,
+                      }}
+                    >
+                      StayEase Reservation
+                    </h4>
+                  </div>
+                  <Badge s={b.status} />
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    paddingTop: 12,
+                    borderTop: `1px dashed ${C.grayL}`,
+                  }}
+                >
+                  <span
+                    className="sans"
+                    style={{
+                      color: C.gray,
+                      fontSize: ".85rem",
+                      fontWeight: 500,
+                    }}
+                  >
+                    <span style={{ color: C.primary }}>{b.check_in}</span>{" "}
+                    &nbsp;→&nbsp;{" "}
+                    <span style={{ color: C.primary }}>{b.check_out}</span>{" "}
+                    &nbsp;&nbsp;|&nbsp;&nbsp; 👥 {b.guest_count} Guests
+                  </span>
+                  <span
+                    className="serif"
+                    style={{
+                      color: C.secondary,
+                      fontSize: "1.3rem",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ₱{parseFloat(b.total_price || 0).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
 
 /* ── MAIN COMPONENT ── */
-const UserDash = ({ setPage }) => {
+const UserDash = ({ setPage, setReceiptData }) => {
   const { user, logout } = useAuth();
-  const [tab, setTab] = useState("home");
+
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") || "home";
+  const setTab = (newTab) => setSearchParams({ tab: newTab });
+
   const [modalRoom, setModalRoom] = useState(null);
   const [cart, setCart] = useState([]);
+
+  const [checkIn, setCheckIn] = useState("");
+  const [checkOut, setCheckOut] = useState("");
+  const [guests, setGuests] = useState(1);
 
   const [rooms, setRooms] = useState([]);
   const [bookings, setBookings] = useState([]);
@@ -1067,33 +1705,34 @@ const UserDash = ({ setPage }) => {
 
   const fetchAllData = async () => {
     setLoading(true);
-
-    // 1. Safe Room Fetching - Without restrictive UI filters so rooms ALWAYS show
     try {
-      // Determines whether your backend uses .list() or .getRooms()
       const fetchFunc = roomsService.list
         ? roomsService.list
         : roomsService.getRooms;
       const roomsRes = await fetchFunc();
-
-      // Safely extract the array no matter how Django wraps it
       const allRooms = Array.isArray(roomsRes)
         ? roomsRes
         : roomsRes?.results || [];
       setRooms(allRooms);
-    } catch (err) {
-      console.error("Failed to load rooms:", err);
-    }
+    } catch (err) {}
 
-    // 2. Safe Booking Fetching
     try {
-      if (bookingsService.getMyBookings) {
-        const bksRes = await bookingsService.getMyBookings();
+      if (bookingsService.myBookings) {
+        const bksRes = await bookingsService.myBookings();
         setBookings(Array.isArray(bksRes) ? bksRes : bksRes?.results || []);
       }
-    } catch (err) {
-      console.error("Failed to load bookings:", err);
-    }
+    } catch (err) {}
+
+    try {
+      if (wishlistService.list) {
+        const wlRes = await wishlistService.list();
+        const wlData = Array.isArray(wlRes) ? wlRes : wlRes?.results || [];
+        const dbCartRooms = wlData.map((item) =>
+          item.room ? item.room : item,
+        );
+        setCart(dbCartRooms);
+      }
+    } catch (err) {}
 
     setLoading(false);
   };
@@ -1102,24 +1741,29 @@ const UserDash = ({ setPage }) => {
     fetchAllData();
   }, []);
 
-  const toggleCart = (room) => {
-    setCart((prev) =>
-      prev.find((r) => r.id === room.id)
-        ? prev.filter((r) => r.id !== room.id)
-        : [...prev, room],
-    );
+  const toggleCart = async (room) => {
+    const inCart = cart.some((c) => c.id === room.id);
+    if (inCart) {
+      setCart((prev) => prev.filter((r) => r.id !== room.id));
+      try {
+        await wishlistService.remove(room.id);
+      } catch (e) {
+        fetchAllData();
+      }
+    } else {
+      setCart((prev) => [...prev, room]);
+      try {
+        await wishlistService.add(room.id);
+      } catch (e) {
+        fetchAllData();
+      }
+    }
   };
 
   if (loading)
     return (
       <div
-        style={{
-          padding: "100px 20px",
-          textAlign: "center",
-          fontFamily: "DM Sans, sans-serif",
-          color: C.primary,
-          fontSize: "1.1rem",
-        }}
+        style={{ padding: "100px 20px", textAlign: "center", color: C.primary }}
       >
         Loading your stay...
       </div>
@@ -1133,19 +1777,20 @@ const UserDash = ({ setPage }) => {
           onClose={() => setModalRoom(null)}
           inCart={cart.some((c) => c.id === modalRoom.id)}
           onToggleCart={toggleCart}
+          setTab={setTab}
         />
       )}
 
       <Shell
         nav={navItems}
-        tab={tab}
+        tab={tab === "checkout" ? "cart" : tab}
         setTab={setTab}
-        setPage={setPage}
         name={
           `${user?.first_name || ""} ${user?.last_name || ""}`.trim() || "Guest"
         }
         role="guest"
         init={user?.first_name?.charAt(0) || "G"}
+        bookings={bookings}
       >
         {tab === "home" && (
           <RoomListings
@@ -1157,14 +1802,37 @@ const UserDash = ({ setPage }) => {
             toggleCart={toggleCart}
           />
         )}
+
         {tab === "cart" && (
           <CartTab
             cart={cart}
-            setCart={setCart}
+            toggleCart={toggleCart}
             setTab={setTab}
-            refreshData={fetchAllData}
+            checkIn={checkIn}
+            setCheckIn={setCheckIn}
+            checkOut={checkOut}
+            setCheckOut={setCheckOut}
+            guests={guests}
+            setGuests={setGuests}
           />
         )}
+
+        {tab === "checkout" && (
+          <CheckoutTab
+            cart={cart}
+            setCart={setCart}
+            setTab={setTab}
+            setPage={setPage}
+            navigate={navigate}
+            refreshData={fetchAllData}
+            checkIn={checkIn}
+            checkOut={checkOut}
+            guests={guests}
+            user={user}
+            setReceiptData={setReceiptData}
+          />
+        )}
+
         {tab === "bookings" && <BookingsTab bookings={bookings} />}
 
         {tab === "profile" && (
@@ -1176,7 +1844,6 @@ const UserDash = ({ setPage }) => {
                 padding: "40px",
                 textAlign: "center",
                 marginBottom: 24,
-                boxShadow: "0 10px 30px rgba(10,29,55,.1)",
               }}
             >
               <div
@@ -1189,7 +1856,6 @@ const UserDash = ({ setPage }) => {
                   alignItems: "center",
                   justifyContent: "center",
                   margin: "0 auto 16px",
-                  border: "4px solid rgba(197,160,89,.3)",
                 }}
               >
                 <span
@@ -1238,7 +1904,7 @@ const UserDash = ({ setPage }) => {
               }}
               onClick={() => {
                 logout();
-                setPage("landing");
+                navigate("/");
               }}
             >
               <LogOut size={18} /> Log Out Securely

@@ -1,14 +1,16 @@
-// src/main.jsx  — replace your existing file with this
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom"; // <-- Added Router
 import "./index.css";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.js";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
   </StrictMode>,
 );
