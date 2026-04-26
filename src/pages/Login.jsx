@@ -1,19 +1,42 @@
+// src/pages/Login.jsx  — replace your existing file with this
 import { useState } from "react";
 import { C } from "../constants";
 import { GBar, Logo } from "../components/UI";
+import { useAuth } from "../context/AuthContext";
 
 const Login = ({ setPage }) => {
+  const { login } = useAuth();
   const [role, setRole] = useState("guest");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const go = () => {
+  const go = async () => {
+    if (!email || !pw) {
+      setError("Please enter your email and password.");
+      return;
+    }
+    setError("");
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const user = await login(email, pw);
+      // Use actual role from backend, not the toggle
+      setPage(user.role === "admin" ? "adminDash" : "userDash");
+    } catch (err) {
+      // Backend returns { detail: "..." } or { email: [...] }
+      const msg =
+        err?.detail ||
+        err?.non_field_errors?.[0] ||
+        "Invalid email or password.";
+      setError(msg);
+    } finally {
       setLoading(false);
-      setPage(role === "admin" ? "adminDash" : "userDash");
-    }, 1100);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") go();
   };
 
   return (
@@ -47,11 +70,9 @@ const Login = ({ setPage }) => {
             border: "1px solid rgba(197,160,89,.07)",
           }}
         />
-
         <div onClick={() => setPage("landing")} style={{ cursor: "pointer" }}>
           <Logo />
         </div>
-
         <div>
           <div
             className="sans"
@@ -128,7 +149,6 @@ const Login = ({ setPage }) => {
             </p>
           </div>
         </div>
-
         <div style={{ display: "flex", gap: 8 }}>
           {[
             "photo-1631049307264-da0ec9d70304",
@@ -152,7 +172,6 @@ const Login = ({ setPage }) => {
             </div>
           ))}
         </div>
-
         <div
           className="sans"
           style={{
@@ -194,7 +213,7 @@ const Login = ({ setPage }) => {
             Enter your credentials to continue
           </p>
 
-          {/* Role toggle */}
+          {/* Role toggle — visual only, actual role comes from backend */}
           <div
             style={{
               display: "flex",
@@ -233,6 +252,23 @@ const Login = ({ setPage }) => {
             ))}
           </div>
 
+          {/* Error message */}
+          {error && (
+            <div
+              className="sans"
+              style={{
+                background: "#FEE2E2",
+                color: "#991B1B",
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: ".82rem",
+                marginBottom: 16,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 17 }}>
             <div>
               <label className="lbl">Email Address</label>
@@ -242,6 +278,7 @@ const Login = ({ setPage }) => {
                 placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={handleKeyDown}
               />
             </div>
             <div>
@@ -270,6 +307,7 @@ const Login = ({ setPage }) => {
                 placeholder="••••••••"
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
+                onKeyDown={handleKeyDown}
               />
             </div>
             <button

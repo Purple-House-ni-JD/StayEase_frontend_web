@@ -1,22 +1,79 @@
+// src/pages/Register.jsx  — replace your existing file with this
 import { useState } from "react";
 import { C } from "../constants";
 import { GBar, Logo } from "../components/UI";
+import { useAuth } from "../context/AuthContext";
 
 const Register = ({ setPage }) => {
+  const { register } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [agree, setAgree] = useState(false);
+  const [error, setError] = useState("");
 
-  const go = () => {
+  // Step 1 fields
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [password2, setPassword2] = useState("");
+
+  // Step 2 fields
+  const [phone, setPhone] = useState("");
+  const [discountType, setDiscountType] = useState("none");
+  const [nationality, setNationality] = useState("Filipino");
+
+  const validateStep1 = () => {
+    if (!fullName || !email || !password || !password2)
+      return "Please fill in all fields.";
+    if (password !== password2) return "Passwords do not match.";
+    if (password.length < 8) return "Password must be at least 8 characters.";
+    if (!agree) return "Please agree to the Terms of Service.";
+    return null;
+  };
+
+  const go = async () => {
+    setError("");
+
     if (step === 1) {
+      const err = validateStep1();
+      if (err) {
+        setError(err);
+        return;
+      }
       setStep(2);
       return;
     }
+
+    // Step 2 — submit to backend
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    const nameParts = fullName.trim().split(" ");
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+
+    try {
+      await register({
+        email,
+        username: email.split("@")[0], // derive username from email
+        first_name: firstName,
+        last_name: lastName,
+        phone_number: phone,
+        password,
+        password2,
+      });
       setPage("userDash");
-    }, 1100);
+    } catch (err) {
+      // Django validation errors come as { field: ['message'] }
+      const firstError =
+        err?.email?.[0] ||
+        err?.password?.[0] ||
+        err?.username?.[0] ||
+        err?.detail ||
+        err?.non_field_errors?.[0] ||
+        "Registration failed. Please try again.";
+      setError(firstError);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -155,7 +212,12 @@ const Register = ({ setPage }) => {
             }}
           >
             <span
-              onClick={() => step === 2 && setStep(1)}
+              onClick={() => {
+                if (step === 2) {
+                  setStep(1);
+                  setError("");
+                }
+              }}
               style={{
                 cursor: step === 2 ? "pointer" : "default",
                 color: step === 2 ? C.primary : C.grayL,
@@ -231,16 +293,38 @@ const Register = ({ setPage }) => {
             }}
           >
             {step === 1
-              ? "Experience a world of luxury and personalized stays. Join the StayEase elite."
+              ? "Experience a world of luxury and personalized stays."
               : "Complete your profile to personalize your experience."}
           </p>
+
+          {/* Error message */}
+          {error && (
+            <div
+              className="sans"
+              style={{
+                background: "#FEE2E2",
+                color: "#991B1B",
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: ".82rem",
+                marginBottom: 16,
+              }}
+            >
+              {error}
+            </div>
+          )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
             {step === 1 ? (
               <>
                 <div>
                   <label className="lbl">Full Name</label>
-                  <input className="inp" placeholder="Enter your full name" />
+                  <input
+                    className="inp"
+                    placeholder="Enter your full name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className="lbl">Email Address</label>
@@ -248,6 +332,8 @@ const Register = ({ setPage }) => {
                     type="email"
                     className="inp"
                     placeholder="example@stayease.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                   />
                 </div>
                 <div>
@@ -255,7 +341,9 @@ const Register = ({ setPage }) => {
                   <input
                     type="password"
                     className="inp"
-                    placeholder="•••••••"
+                    placeholder="Min. 8 characters"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                   />
                 </div>
                 <div>
@@ -263,7 +351,9 @@ const Register = ({ setPage }) => {
                   <input
                     type="password"
                     className="inp"
-                    placeholder="•••••••"
+                    placeholder="Re-enter password"
+                    value={password2}
+                    onChange={(e) => setPassword2(e.target.value)}
                   />
                 </div>
                 <div
@@ -300,21 +390,36 @@ const Register = ({ setPage }) => {
               <>
                 <div>
                   <label className="lbl">Phone Number</label>
-                  <input className="inp" placeholder="+63 9XX XXX XXXX" />
+                  <input
+                    className="inp"
+                    placeholder="+63 9XX XXX XXXX"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className="lbl">
                     Are you a PWD or Senior Citizen?
                   </label>
-                  <select className="inp">
-                    <option>No</option>
-                    <option>Yes — PWD (20% discount)</option>
-                    <option>Yes — Senior Citizen (20% discount)</option>
+                  <select
+                    className="inp"
+                    value={discountType}
+                    onChange={(e) => setDiscountType(e.target.value)}
+                  >
+                    <option value="none">No</option>
+                    <option value="pwd">Yes — PWD (20% discount)</option>
+                    <option value="senior">
+                      Yes — Senior Citizen (20% discount)
+                    </option>
                   </select>
                 </div>
                 <div>
                   <label className="lbl">Nationality</label>
-                  <select className="inp">
+                  <select
+                    className="inp"
+                    value={nationality}
+                    onChange={(e) => setNationality(e.target.value)}
+                  >
                     <option>Filipino</option>
                     <option>Other</option>
                   </select>
@@ -341,61 +446,14 @@ const Register = ({ setPage }) => {
             </button>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              margin: "22px 0",
-            }}
-          >
-            <div style={{ flex: 1, height: 1, background: C.grayL }} />
-            <span
-              className="sans"
-              style={{
-                color: C.gray,
-                fontSize: ".72rem",
-                letterSpacing: ".06em",
-              }}
-            >
-              OR REGISTER WITH
-            </span>
-            <div style={{ flex: 1, height: 1, background: C.grayL }} />
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
-              marginBottom: 22,
-            }}
-          >
-            {[
-              ["■", "Apple"],
-              ["ios", "iOS"],
-            ].map(([ic, nm]) => (
-              <button
-                key={nm}
-                style={{
-                  padding: "11px",
-                  border: `1.5px solid ${C.grayL}`,
-                  background: C.neutral,
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontFamily: "DM Sans,sans-serif",
-                  fontSize: ".82rem",
-                  color: C.primary,
-                }}
-              >
-                {ic} {nm}
-              </button>
-            ))}
-          </div>
-
           <p
             className="sans"
-            style={{ textAlign: "center", color: C.gray, fontSize: ".85rem" }}
+            style={{
+              textAlign: "center",
+              color: C.gray,
+              fontSize: ".85rem",
+              marginTop: 22,
+            }}
           >
             Already have an account?{" "}
             <span
