@@ -17,15 +17,54 @@ const navItems = [
 const RoomModal = ({ room, onClose, refreshData }) => {
   const isEdit = !!room?.id;
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false); // <-- NEW
+
   const [formData, setFormData] = useState({
     name: room?.name || "",
-    category: room?.category || "standard", // Changed default to lowercase
+    category: room?.category || "standard",
     price_per_night: room?.price_per_night || "",
     max_guest: room?.max_guest || 2,
     description: room?.description || "",
     availability_status: room?.availability_status !== false,
     is_featured: room?.is_featured || false,
+    image_urls: room?.image_urls || [], // <-- NEW: Holds the Cloudinary URLs
   });
+
+  // <-- NEW: Direct Cloudinary Upload Function
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    const data = new FormData();
+    data.append("file", file);
+    data.append("upload_preset", "stayease_preset"); // Replace with your exact unsigned preset name!
+    data.append("cloud_name", "djtdar2ex");
+
+    try {
+      const res = await fetch(
+        "https://api.cloudinary.com/v1_1/djtdar2ex/image/upload",
+        {
+          method: "POST",
+          body: data,
+        },
+      );
+      const uploaded = await res.json();
+      if (uploaded.secure_url) {
+        setFormData((prev) => ({
+          ...prev,
+          image_urls: [
+            ...(prev.image_urls || []),
+            { image_url: uploaded.secure_url },
+          ],
+        }));
+      }
+    } catch (err) {
+      alert("Image upload failed. Check your internet or Cloudinary preset.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -51,7 +90,7 @@ const RoomModal = ({ room, onClose, refreshData }) => {
 
       if (!isEdit) {
         payload.rating = 0.0;
-        payload.image_urls = [];
+        // (Removed payload.image_urls = [] so it keeps the images we just uploaded!)
       }
 
       if (isEdit) {
@@ -141,8 +180,9 @@ const RoomModal = ({ room, onClose, refreshData }) => {
                 {[
                   { val: "standard", label: "Standard" },
                   { val: "deluxe", label: "Deluxe" },
-                  { val: "suite", label: "Suite" },
-                  { val: "villa", label: "Villa" },
+                  { val: "superior", label: "Superior" },
+                  { val: "junior_suite", label: "Junior Suite" },
+                  { val: "executive_suite", label: "Executive Suite" },
                   { val: "family", label: "Family" },
                 ].map((t) => (
                   <option key={t.val} value={t.val}>
@@ -174,6 +214,106 @@ const RoomModal = ({ room, onClose, refreshData }) => {
                 value={formData.max_guest}
                 onChange={handleChange}
               />
+            </div>
+
+            {/* <-- NEW: Image Uploader & Preview Grid --> */}
+            <div
+              style={{
+                background: C.grayXL,
+                padding: 16,
+                borderRadius: 12,
+                border: `1px dashed ${C.grayL}`,
+              }}
+            >
+              <label
+                className="lbl"
+                style={{ marginBottom: 8, display: "block" }}
+              >
+                Room Photos
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                disabled={uploadingImage}
+                style={{ marginBottom: 12 }}
+              />
+              {uploadingImage && (
+                <span
+                  className="sans"
+                  style={{
+                    color: C.secondary,
+                    fontSize: ".8rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  {" "}
+                  Uploading to Cloudinary...
+                </span>
+              )}
+
+              {/* Image Previews */}
+              {formData.image_urls?.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    overflowX: "auto",
+                    paddingBottom: 8,
+                  }}
+                >
+                  {formData.image_urls.map((img, idx) => {
+                    const url = img.image_url || img;
+                    return (
+                      <div
+                        key={idx}
+                        style={{ position: "relative", flexShrink: 0 }}
+                      >
+                        <img
+                          src={url}
+                          alt="Room Preview"
+                          style={{
+                            width: 80,
+                            height: 80,
+                            objectFit: "cover",
+                            borderRadius: 8,
+                            border: `1px solid ${C.grayL}`,
+                          }}
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setFormData((prev) => ({
+                              ...prev,
+                              image_urls: prev.image_urls.filter(
+                                (_, i) => i !== idx,
+                              ),
+                            }));
+                          }}
+                          style={{
+                            position: "absolute",
+                            top: -6,
+                            right: -6,
+                            background: C.red,
+                            color: "#fff",
+                            borderRadius: "50%",
+                            border: "none",
+                            cursor: "pointer",
+                            width: 22,
+                            height: 22,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: ".7rem",
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
           <div>

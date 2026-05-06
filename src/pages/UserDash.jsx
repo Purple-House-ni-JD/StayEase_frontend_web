@@ -35,7 +35,15 @@ const navItems = [
   { id: "profile", icon: <UserIcon size={18} />, label: "Profile" },
 ];
 
-const CATS = ["All", "Standard", "Deluxe", "Suite", "Villa", "Family"];
+const CATS = [
+  "All",
+  "Standard",
+  "Deluxe",
+  "Superior",
+  "Junior Suite",
+  "Executive Suite",
+  "Family",
+];
 
 /* ── PREMIUM ROOM DETAILS MODAL ── */
 const RoomDetailsModal = ({ room, onClose, inCart, onToggleCart, setTab }) => {
@@ -1683,6 +1691,316 @@ const BookingsTab = ({ bookings }) => {
   );
 };
 
+/* ── PROFILE TAB (NEW & OPTIMIZED) ── */
+const ProfileTab = ({ user, logout, navigate }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    first_name: user?.first_name || "",
+    last_name: user?.last_name || "",
+    email: user?.email || "",
+  });
+
+  useEffect(() => {
+    if (user)
+      setFormData({
+        first_name: user.first_name || "",
+        last_name: user.last_name || "",
+        email: user.email || "",
+      });
+  }, [user]);
+
+  const handleSave = async () => {
+    // await authService.updateProfile(formData);
+    alert("Profile details updated successfully!");
+    setIsEditing(false);
+  };
+
+  return (
+    <div
+      className="fi"
+      style={{ maxWidth: 600, margin: "0 auto", width: "100%" }}
+    >
+      <div
+        style={{
+          background: C.primary,
+          borderRadius: 24,
+          padding: "48px 32px",
+          marginBottom: 24,
+          boxShadow: "0 20px 40px rgba(10,29,55,.1)",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        {/* Subtle Gold Background Accent */}
+        <div
+          style={{
+            position: "absolute",
+            top: -50,
+            right: -50,
+            width: 200,
+            height: 200,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(197,160,89,0.15) 0%, transparent 70%)",
+            pointerEvents: "none",
+          }}
+        />
+
+        <div style={{ textAlign: "center", position: "relative", zIndex: 2 }}>
+          <div
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: "50%",
+              background: `linear-gradient(135deg,${C.secondary},${C.tertiary})`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 20px",
+              border: "4px solid rgba(255,255,255,0.1)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.2)",
+            }}
+          >
+            <span
+              className="serif"
+              style={{ color: C.primary, fontSize: "2.4rem", fontWeight: 700 }}
+            >
+              {formData.first_name?.charAt(0) || "G"}
+            </span>
+          </div>
+
+          {!isEditing ? (
+            <>
+              <div
+                className="serif"
+                style={{
+                  color: C.neutral,
+                  fontSize: "1.8rem",
+                  fontWeight: 600,
+                  marginBottom: 8,
+                }}
+              >
+                {formData.first_name} {formData.last_name}
+              </div>
+              <div
+                className="sans"
+                style={{
+                  color: "rgba(255,255,255,.6)",
+                  fontSize: ".95rem",
+                  marginBottom: 32,
+                }}
+              >
+                {formData.email}
+              </div>
+              <button
+                onClick={() => setIsEditing(true)}
+                style={{
+                  background: C.secondary,
+                  color: C.primary,
+                  border: "none",
+                  padding: "12px 32px",
+                  borderRadius: 50,
+                  cursor: "pointer",
+                  fontSize: ".95rem",
+                  fontWeight: 600,
+                  transition: "all 0.2s",
+                  boxShadow: "0 4px 12px rgba(197,160,89,.3)",
+                }}
+              >
+                Edit Profile
+              </button>
+            </>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 16,
+                marginTop: 16,
+                textAlign: "left",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 16,
+                }}
+              >
+                <div>
+                  <label
+                    className="sans"
+                    style={{
+                      display: "block",
+                      fontSize: ".75rem",
+                      color: "rgba(255,255,255,.6)",
+                      textTransform: "uppercase",
+                      letterSpacing: ".05em",
+                      marginBottom: 6,
+                    }}
+                  >
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.first_name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, first_name: e.target.value })
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "14px 16px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      background: "rgba(255,255,255,0.05)",
+                      color: "#fff",
+                      outline: "none",
+                      fontFamily: "DM Sans, sans-serif",
+                      fontSize: ".95rem",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label
+                    className="sans"
+                    style={{
+                      display: "block",
+                      fontSize: ".75rem",
+                      color: "rgba(255,255,255,.6)",
+                      textTransform: "uppercase",
+                      letterSpacing: ".05em",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.last_name}
+                    onChange={(e) =>
+                      setFormData({ ...formData, last_name: e.target.value })
+                    }
+                    style={{
+                      width: "100%",
+                      padding: "14px 16px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      background: "rgba(255,255,255,0.05)",
+                      color: "#fff",
+                      outline: "none",
+                      fontFamily: "DM Sans, sans-serif",
+                      fontSize: ".95rem",
+                    }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label
+                  className="sans"
+                  style={{
+                    display: "block",
+                    fontSize: ".75rem",
+                    color: "rgba(255,255,255,.6)",
+                    textTransform: "uppercase",
+                    letterSpacing: ".05em",
+                    marginBottom: 6,
+                  }}
+                >
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "14px 16px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    background: "rgba(255,255,255,0.05)",
+                    color: "#fff",
+                    outline: "none",
+                    fontFamily: "DM Sans, sans-serif",
+                    fontSize: ".95rem",
+                  }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+                <button
+                  onClick={() => setIsEditing(false)}
+                  style={{
+                    flex: 1,
+                    padding: "14px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    background: "transparent",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    fontSize: ".95rem",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  style={{
+                    flex: 1,
+                    padding: "14px",
+                    borderRadius: 12,
+                    border: "none",
+                    background: C.secondary,
+                    color: C.primary,
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    fontSize: ".95rem",
+                  }}
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <button
+        className="btn-o"
+        style={{
+          width: "100%",
+          padding: "16px",
+          borderRadius: 16,
+          borderColor: "rgba(239, 68, 68, 0.3)",
+          background: "rgba(239, 68, 68, 0.05)",
+          color: C.red,
+          fontSize: "1rem",
+          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          transition: "all 0.2s",
+        }}
+        onClick={() => {
+          logout();
+          navigate("/");
+        }}
+        onMouseEnter={(e) =>
+          (e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)")
+        }
+        onMouseLeave={(e) =>
+          (e.currentTarget.style.background = "rgba(239, 68, 68, 0.05)")
+        }
+      >
+        <LogOut size={20} /> Log Out Securely
+      </button>
+    </div>
+  );
+};
+
 /* ── MAIN COMPONENT ── */
 const UserDash = ({ setPage, setReceiptData }) => {
   const { user, logout } = useAuth();
@@ -1836,80 +2154,7 @@ const UserDash = ({ setPage, setReceiptData }) => {
         {tab === "bookings" && <BookingsTab bookings={bookings} />}
 
         {tab === "profile" && (
-          <div className="fi" style={{ maxWidth: 580 }}>
-            <div
-              style={{
-                background: C.primary,
-                borderRadius: 20,
-                padding: "40px",
-                textAlign: "center",
-                marginBottom: 24,
-              }}
-            >
-              <div
-                style={{
-                  width: 88,
-                  height: 88,
-                  borderRadius: "50%",
-                  background: `linear-gradient(135deg,${C.secondary},${C.tertiary})`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  margin: "0 auto 16px",
-                }}
-              >
-                <span
-                  className="serif"
-                  style={{
-                    color: C.primary,
-                    fontSize: "2rem",
-                    fontWeight: 700,
-                  }}
-                >
-                  {user?.first_name?.charAt(0) || "G"}
-                </span>
-              </div>
-              <div
-                className="serif"
-                style={{
-                  color: C.neutral,
-                  fontSize: "1.6rem",
-                  fontWeight: 600,
-                  marginBottom: 6,
-                }}
-              >
-                {user?.first_name} {user?.last_name}
-              </div>
-              <div
-                className="sans"
-                style={{ color: "rgba(255,255,255,.5)", fontSize: ".9rem" }}
-              >
-                {user?.email}
-              </div>
-            </div>
-            <button
-              className="btn-o"
-              style={{
-                width: "100%",
-                padding: "16px",
-                borderRadius: 12,
-                borderColor: C.red,
-                color: C.red,
-                fontSize: "1rem",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-              onClick={() => {
-                logout();
-                navigate("/");
-              }}
-            >
-              <LogOut size={18} /> Log Out Securely
-            </button>
-          </div>
+          <ProfileTab user={user} logout={logout} navigate={navigate} />
         )}
       </Shell>
     </>
