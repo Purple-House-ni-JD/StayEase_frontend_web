@@ -20,7 +20,7 @@ const Login = ({ setPage }) => {
     try {
       const user = await login(email, pw);
       // Automatically routes based on actual database role, no toggle needed
-      const isAdmin = user.is_staff || user.is_superuser;
+      const isAdmin = user.role === "admin";
       setPage(isAdmin ? "adminDash" : "userDash");
     } catch (err) {
       const msg =
@@ -267,19 +267,9 @@ const Login = ({ setPage }) => {
             }}
           >
             <div style={{ flex: 1, height: 1, background: C.grayL }} />
-            <span
-              className="sans"
-              style={{
-                color: C.gray,
-                fontSize: ".72rem",
-                letterSpacing: ".06em",
-              }}
-            >
-              OR CONTINUE WITH
-            </span>
+
             <div style={{ flex: 1, height: 1, background: C.grayL }} />
           </div>
-
           <div
             style={{
               display: "grid",
@@ -287,34 +277,7 @@ const Login = ({ setPage }) => {
               gap: 12,
               marginBottom: 26,
             }}
-          >
-            {[
-              ["G", "Google", "#4285F4"],
-              ["f", "Facebook", "#1877F2"],
-            ].map(([ic, nm, cl]) => (
-              <button
-                key={nm}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  padding: "11px",
-                  border: `1.5px solid ${C.grayL}`,
-                  background: C.neutral,
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontFamily: "DM Sans,sans-serif",
-                  fontSize: ".82rem",
-                  fontWeight: 500,
-                  color: C.primary,
-                }}
-              >
-                <span style={{ color: cl, fontWeight: 700 }}>{ic}</span>
-                {nm}
-              </button>
-            ))}
-          </div>
+          ></div>
 
           <p
             className="sans"
