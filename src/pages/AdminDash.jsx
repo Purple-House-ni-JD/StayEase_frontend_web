@@ -17,7 +17,8 @@ const navItems = [
 const RoomModal = ({ room, onClose, refreshData }) => {
   const isEdit = !!room?.id;
   const [loading, setLoading] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false); // <-- NEW
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
 
   const [formData, setFormData] = useState({
     name: room?.name || "",
@@ -27,43 +28,13 @@ const RoomModal = ({ room, onClose, refreshData }) => {
     description: room?.description || "",
     availability_status: room?.availability_status !== false,
     is_featured: room?.is_featured || false,
-    image_urls: room?.image_urls || [], // <-- NEW: Holds the Cloudinary URLs
+    image_urls: room?.image_urls || [],
   });
 
-  // <-- NEW: Direct Cloudinary Upload Function
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setUploadingImage(true);
-    const data = new FormData();
-    data.append("file", file);
-    data.append("upload_preset", "stayease_preset"); // Replace with your exact unsigned preset name!
-    data.append("cloud_name", "djtdar2ex");
-
-    try {
-      const res = await fetch(
-        "https://api.cloudinary.com/v1_1/djtdar2ex/image/upload",
-        {
-          method: "POST",
-          body: data,
-        },
-      );
-      const uploaded = await res.json();
-      if (uploaded.secure_url) {
-        setFormData((prev) => ({
-          ...prev,
-          image_urls: [
-            ...(prev.image_urls || []),
-            { image_url: uploaded.secure_url },
-          ],
-        }));
-      }
-    } catch (err) {
-      alert("Image upload failed. Check your internet or Cloudinary preset.");
-    } finally {
-      setUploadingImage(false);
-    }
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setSelectedFiles(files);
   };
 
   const handleChange = (e) => {
@@ -78,25 +49,33 @@ const RoomModal = ({ room, onClose, refreshData }) => {
     setLoading(true);
     try {
       const payload = {
-        ...formData,
+        name: formData.name,
+        category: formData.category,
+        description:
+          formData.description && formData.description.trim() !== ""
+            ? formData.description
+            : "No description provided.",
         price_per_night: parseFloat(formData.price_per_night) || 0.0,
         max_guest: parseInt(formData.max_guest, 10) || 2,
+        availability_status: formData.availability_status,
+        is_featured: formData.is_featured,
       };
-
-      // FIXED: If description is left blank, inject a placeholder so Django doesn't block it
-      if (!payload.description || payload.description.trim() === "") {
-        payload.description = "No description provided.";
-      }
 
       if (!isEdit) {
         payload.rating = 0.0;
-        // (Removed payload.image_urls = [] so it keeps the images we just uploaded!)
       }
 
+      let roomResponse = null;
       if (isEdit) {
-        await roomsService.update(room.id, payload);
+        roomResponse = await roomsService.update(room.id, payload);
       } else {
-        await roomsService.create(payload);
+        roomResponse = await roomsService.create(payload);
+      }
+
+      const roomId = isEdit ? room.id : roomResponse.id;
+      if (selectedFiles.length > 0) {
+        setUploadingImage(true);
+        await roomsService.uploadImages(roomId, selectedFiles);
       }
 
       refreshData();
@@ -109,6 +88,7 @@ const RoomModal = ({ room, onClose, refreshData }) => {
       alert(`Backend Error: ${errorMsg}`);
     } finally {
       setLoading(false);
+      setUploadingImage(false);
     }
   };
 
@@ -234,6 +214,7 @@ const RoomModal = ({ room, onClose, refreshData }) => {
               <input
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={handleImageUpload}
                 disabled={uploadingImage}
                 style={{ marginBottom: 12 }}
@@ -247,9 +228,35 @@ const RoomModal = ({ room, onClose, refreshData }) => {
                     fontWeight: 600,
                   }}
                 >
-                  {" "}
-                  Uploading to Cloudinary...
+                  Uploading images to backend...
                 </span>
+              )}
+
+              {selectedFiles.length > 0 && (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                  }}
+                >
+                  <span
+                    className="sans"
+                    style={{ fontSize: ".85rem", color: C.gray }}
+                  >
+                    Selected files:
+                  </span>
+                  {selectedFiles.map((file, idx) => (
+                    <span
+                      key={idx}
+                      className="sans"
+                      style={{ fontSize: ".85rem", color: C.text }}
+                    >
+                      • {file.name}
+                    </span>
+                  ))}
+                </div>
               )}
 
               {/* Image Previews */}
