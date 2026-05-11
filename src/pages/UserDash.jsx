@@ -45,6 +45,82 @@ const CATS = [
   "Family",
 ];
 
+/* ── ERROR MODAL ── */
+const ErrorModal = ({ message, onClose }) => {
+  return (
+    <div
+      className="mbg"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        className="lift"
+        style={{
+          background: C.neutral,
+          borderRadius: 24,
+          width: "100%",
+          maxWidth: 400,
+          padding: 32,
+          textAlign: "center",
+          boxShadow: "0 20px 40px rgba(0,0,0,0.15)",
+        }}
+      >
+        <div
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: "50%",
+            background: "rgba(220, 38, 38, 0.1)",
+            color: C.red,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            margin: "0 auto 20px",
+          }}
+        >
+          <X size={32} />
+        </div>
+        <h3
+          className="serif"
+          style={{
+            color: C.primary,
+            fontSize: "1.5rem",
+            fontWeight: 600,
+            marginBottom: 12,
+          }}
+        >
+          Booking Unsuccessful
+        </h3>
+        <p
+          className="sans"
+          style={{
+            color: C.gray,
+            fontSize: ".95rem",
+            lineHeight: 1.6,
+            marginBottom: 24,
+          }}
+        >
+          {message}
+        </p>
+        <button
+          className="btn-p"
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: 12,
+            fontWeight: 600,
+            background: C.red,
+            borderColor: C.red,
+            color: "#fff",
+          }}
+          onClick={onClose}
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+};
+
 /* ── PREMIUM ROOM DETAILS MODAL ── */
 const RoomDetailsModal = ({ room, onClose, inCart, onToggleCart, setTab }) => {
   let imageUrl =
@@ -824,6 +900,9 @@ const CheckoutTab = ({
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [loading, setLoading] = useState(false);
 
+  // 1. ADD THIS STATE FOR THE ERROR MODAL
+  const [checkoutError, setCheckoutError] = useState(null);
+
   const ci = new Date(checkIn);
   const co = new Date(checkOut);
   const nights = Math.ceil((co - ci) / (1000 * 60 * 60 * 24));
@@ -841,6 +920,7 @@ const CheckoutTab = ({
 
   const handleCheckout = async () => {
     setLoading(true);
+    setCheckoutError(null); // Clear previous errors
     try {
       const payload = {
         room_ids: cart.map((r) => parseInt(r.id, 10)),
@@ -851,10 +931,7 @@ const CheckoutTab = ({
         total_price: totalPrice,
       };
 
-      console.log("Sending payload:", JSON.stringify(payload, null, 2));
-
       const res = await bookingsService.create(payload);
-      console.log("Booking response:", res);
 
       for (const r of cart) {
         try {
@@ -879,20 +956,26 @@ const CheckoutTab = ({
       navigate("/receipt");
     } catch (err) {
       console.error("Full error object:", err);
-      console.error("err.response:", err?.response);
-      console.error("err.response.data:", err?.response?.data);
-      console.error("err.response.status:", err?.response?.status);
 
-      let errorMsg = "Failed to secure reservation.";
-      if (err?.response?.data) {
-        errorMsg =
-          typeof err.response.data === "object"
-            ? JSON.stringify(err.response.data, null, 2)
-            : err.response.data;
+      // 2. UPDATE THE CATCH BLOCK TO EXTRACT THE SPECIFIC ERROR TEXT
+      let errorMsg = "Failed to secure reservation. Please try again.";
+      const data = err?.response?.data || err;
+
+      if (data?.room_ids && Array.isArray(data.room_ids)) {
+        // This catches the exact: "Rooms already booked for these dates: ['Deluxe Room 201']"
+        errorMsg = data.room_ids[0].replace(/[\[\]']/g, ""); // Strips the brackets/quotes for cleaner UI
+      } else if (data?.detail) {
+        errorMsg = data.detail;
+      } else if (typeof data === "object") {
+        errorMsg = Object.values(data).flat().join(" | ");
+      } else if (typeof data === "string") {
+        errorMsg = data;
       } else if (err?.message) {
         errorMsg = err.message;
       }
-      alert(`Backend Error:\n${errorMsg}`);
+
+      // Trigger the modal instead of the alert
+      setCheckoutError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -900,6 +983,12 @@ const CheckoutTab = ({
 
   return (
     <div className="fi">
+      {checkoutError && (
+        <ErrorModal
+          message={checkoutError}
+          onClose={() => setCheckoutError(null)}
+        />
+      )}
       <div
         style={{
           display: "flex",
