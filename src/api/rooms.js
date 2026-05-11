@@ -42,4 +42,10 @@ export const roomsService = {
 
   // DELETE /rooms/{id}/images/remove/
   removeImage: (id, url) => api.delete(`/rooms/${id}/images/remove/`, { url }),
+
+  // GET /amenities/
+  getAmenities: () => api.get("/amenities/"),
+
+  // GET /policies/
+  getPolicies: () => api.get("/policies/"),
 };

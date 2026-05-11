@@ -4,17 +4,38 @@ import { Badge } from "../components/UI";
 import Shell from "../components/Shell";
 import { roomsService } from "../api/rooms";
 import { bookingsService } from "../api/bookings";
-import { useAuth } from "../context/AuthContext"; // Ensure this file is fixed!
+import { useAuth } from "../context/AuthContext";
+import { api } from "../api/client";
+
+const usersService = {
+  list: async () => {
+    try {
+      const res = await api.get("/users/admin/list/");
+      return res.data || res;
+    } catch (error) {
+      console.warn("User endpoint missing. Returning empty array.");
+      return [];
+    }
+  },
+  delete: (id) => api.delete(`/users/admin/${id}/delete/`),
+};
 
 const navItems = [
   { id: "overview", icon: "📊", label: "Overview" },
   { id: "rooms", icon: "🛏️", label: "Room Management" },
   { id: "reservations", icon: "📋", label: "Reservations" },
   { id: "reports", icon: "📈", label: "Sales Reports" },
+  { id: "users", icon: "👥", label: "User Management" },
 ];
 
 /* ── ROOM MODAL ── */
-const RoomModal = ({ room, onClose, refreshData }) => {
+const RoomModal = ({
+  room,
+  onClose,
+  refreshData,
+  amenities = [],
+  policies = [],
+}) => {
   const isEdit = !!room?.id;
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -28,6 +49,8 @@ const RoomModal = ({ room, onClose, refreshData }) => {
     description: room?.description || "",
     availability_status: room?.availability_status !== false,
     is_featured: room?.is_featured || false,
+    amenity_ids: room?.amenities?.map((a) => a.id) || [],
+    policy_ids: room?.policies?.map((p) => p.id) || [],
     image_urls: room?.image_urls || [],
   });
 
@@ -45,6 +68,24 @@ const RoomModal = ({ room, onClose, refreshData }) => {
     }));
   };
 
+  const handleAmenityToggle = (amenityId) => {
+    setFormData((prev) => {
+      const updatedIds = prev.amenity_ids.includes(amenityId)
+        ? prev.amenity_ids.filter((id) => id !== amenityId)
+        : [...prev.amenity_ids, amenityId];
+      return { ...prev, amenity_ids: updatedIds };
+    });
+  };
+
+  const handlePolicyToggle = (policyId) => {
+    setFormData((prev) => {
+      const updatedIds = prev.policy_ids.includes(policyId)
+        ? prev.policy_ids.filter((id) => id !== policyId)
+        : [...prev.policy_ids, policyId];
+      return { ...prev, policy_ids: updatedIds };
+    });
+  };
+
   const handleSubmit = async () => {
     setLoading(true);
     try {
@@ -59,6 +100,8 @@ const RoomModal = ({ room, onClose, refreshData }) => {
         max_guest: parseInt(formData.max_guest, 10) || 2,
         availability_status: formData.availability_status,
         is_featured: formData.is_featured,
+        amenity_ids: formData.amenity_ids,
+        policy_ids: formData.policy_ids,
       };
 
       if (!isEdit) {
@@ -156,7 +199,6 @@ const RoomModal = ({ room, onClose, refreshData }) => {
                 value={formData.category}
                 onChange={handleChange}
               >
-                {/* FIXED: Values are now completely lowercase to match Django's backend tuple */}
                 {[
                   { val: "standard", label: "Standard" },
                   { val: "deluxe", label: "Deluxe" },
@@ -196,7 +238,6 @@ const RoomModal = ({ room, onClose, refreshData }) => {
               />
             </div>
 
-            {/* <-- NEW: Image Uploader & Preview Grid --> */}
             <div
               style={{
                 background: C.grayXL,
@@ -259,7 +300,6 @@ const RoomModal = ({ room, onClose, refreshData }) => {
                 </div>
               )}
 
-              {/* Image Previews */}
               {formData.image_urls?.length > 0 && (
                 <div
                   style={{
@@ -335,7 +375,6 @@ const RoomModal = ({ room, onClose, refreshData }) => {
             />
           </div>
 
-          {/* Toggles */}
           <div style={{ display: "flex", gap: 20, marginTop: 5 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <input
@@ -372,6 +411,82 @@ const RoomModal = ({ room, onClose, refreshData }) => {
               </label>
             </div>
           </div>
+
+          {amenities.length > 0 && (
+            <div>
+              <label className="lbl">Amenities</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {amenities.map((a) => (
+                  <label
+                    key={a.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "8px 12px",
+                      background: formData.amenity_ids.includes(a.id)
+                        ? C.primary
+                        : C.grayL,
+                      color: formData.amenity_ids.includes(a.id)
+                        ? "white"
+                        : C.text,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      fontSize: ".85rem",
+                      fontWeight: 500,
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.amenity_ids.includes(a.id)}
+                      onChange={() => handleAmenityToggle(a.id)}
+                      style={{ cursor: "pointer" }}
+                    />
+                    {a.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {policies.length > 0 && (
+            <div>
+              <label className="lbl">Policies</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {policies.map((p) => (
+                  <label
+                    key={p.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "8px 12px",
+                      background: formData.policy_ids.includes(p.id)
+                        ? C.secondary
+                        : C.grayL,
+                      color: formData.policy_ids.includes(p.id)
+                        ? C.neutral
+                        : C.text,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      fontSize: ".85rem",
+                      fontWeight: 500,
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={formData.policy_ids.includes(p.id)}
+                      onChange={() => handlePolicyToggle(p.id)}
+                      style={{ cursor: "pointer" }}
+                    />
+                    {p.title}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
             <button
@@ -574,7 +689,6 @@ const OverviewTab = ({ setTab, setModal, rooms, bookings }) => {
         </div>
       </div>
 
-      {/* Recent reservations table */}
       <div
         style={{
           background: C.neutral,
@@ -749,7 +863,6 @@ const RoomsTab = ({ setModal, rooms, refreshData }) => {
                   justifyContent: "center",
                 }}
               >
-                {/* FIXED DB FIELD: image_urls */}
                 {r.image_urls?.length > 0 ? (
                   <img
                     src={r.image_urls[0].image_url || r.image_urls[0]}
@@ -772,7 +885,6 @@ const RoomsTab = ({ setModal, rooms, refreshData }) => {
                   </span>
                 )}
                 <div style={{ position: "absolute", top: 10, right: 10 }}>
-                  {/* FIXED DB FIELD: availability_status */}
                   <span
                     style={{
                       background: r.availability_status ? "#DCFCE7" : "#FEE2E2",
@@ -789,7 +901,6 @@ const RoomsTab = ({ setModal, rooms, refreshData }) => {
                   </span>
                 </div>
                 <div style={{ position: "absolute", bottom: 10, left: 12 }}>
-                  {/* FIXED DB FIELD: category */}
                   <span
                     className="sans"
                     style={{
@@ -873,8 +984,14 @@ const RoomsTab = ({ setModal, rooms, refreshData }) => {
     </div>
   );
 };
-/* ── RESERVATIONS TAB ── */
+
+/* ── RESERVATIONS TAB (UPDATED WITH YEAR FILTER & SEARCH) ── */
 const ReservationsTab = ({ bookings, refreshData }) => {
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [monthFilter, setMonthFilter] = useState("all");
+  const [yearFilter, setYearFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+
   const handleStatusUpdate = async (id, newStatus) => {
     try {
       await bookingsService.updateStatus(id, newStatus);
@@ -884,15 +1001,121 @@ const ReservationsTab = ({ bookings, refreshData }) => {
     }
   };
 
+  // Filter & Search Logic
+  const filteredBookings = bookings.filter((b) => {
+    const matchStatus =
+      statusFilter === "all" ||
+      String(b.status || "").toLowerCase() === statusFilter;
+
+    let matchMonth = true;
+    let matchYear = true;
+
+    if (b.check_in) {
+      const dateObj = new Date(b.check_in);
+      if (monthFilter !== "all") {
+        matchMonth = dateObj.getMonth().toString() === monthFilter;
+      }
+      if (yearFilter !== "all") {
+        matchYear = dateObj.getFullYear().toString() === yearFilter;
+      }
+    }
+
+    const matchSearch =
+      searchQuery === "" ||
+      String(b.booking_ref || "")
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase()) ||
+      String(b.guest_name || "")
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase());
+
+    return matchStatus && matchMonth && matchYear && matchSearch;
+  });
+
   return (
     <div className="fi">
-      <div style={{ marginBottom: 22 }}>
-        <h2
-          className="serif"
-          style={{ color: C.primary, fontSize: "1.6rem", fontWeight: 600 }}
-        >
-          Reservation Management
-        </h2>
+      <div
+        style={{
+          marginBottom: 22,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          flexWrap: "wrap",
+          gap: 16,
+        }}
+      >
+        <div>
+          <h2
+            className="serif"
+            style={{ color: C.primary, fontSize: "1.6rem", fontWeight: 600 }}
+          >
+            Reservation Management
+          </h2>
+          <p
+            className="sans"
+            style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
+          >
+            Filter and update guest bookings
+          </p>
+        </div>
+
+        {/* --- FILTERS UI --- */}
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <input
+            type="text"
+            className="inp"
+            placeholder="Search by booking ref or guest name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ padding: "8px 16px", minWidth: 200 }}
+          />
+          <select
+            className="inp"
+            style={{ padding: "8px 16px", minWidth: 120 }}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="all">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+
+          <select
+            className="inp"
+            style={{ padding: "8px 16px", minWidth: 120 }}
+            value={monthFilter}
+            onChange={(e) => setMonthFilter(e.target.value)}
+          >
+            <option value="all">All Months</option>
+            <option value="0">January</option>
+            <option value="1">February</option>
+            <option value="2">March</option>
+            <option value="3">April</option>
+            <option value="4">May</option>
+            <option value="5">June</option>
+            <option value="6">July</option>
+            <option value="7">August</option>
+            <option value="8">September</option>
+            <option value="9">October</option>
+            <option value="10">November</option>
+            <option value="11">December</option>
+          </select>
+
+          <select
+            className="inp"
+            style={{ padding: "8px 16px", minWidth: 100 }}
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
+          >
+            <option value="all">All Years</option>
+            <option value="2024">2024</option>
+            <option value="2025">2025</option>
+            <option value="2026">2026</option>
+            <option value="2027">2027</option>
+          </select>
+        </div>
       </div>
 
       <div
@@ -907,7 +1130,6 @@ const ReservationsTab = ({ bookings, refreshData }) => {
           <table className="tbl">
             <thead>
               <tr>
-                {/* Removed "Guest ID" from headers */}
                 {[
                   "Ref ID",
                   "Guests",
@@ -922,75 +1144,93 @@ const ReservationsTab = ({ bookings, refreshData }) => {
               </tr>
             </thead>
             <tbody>
-              {bookings.map((b) => (
-                <tr key={b.id}>
-                  <td>
-                    <span
-                      className="sans"
-                      style={{
-                        color: C.secondary,
-                        fontWeight: 700,
-                        fontSize: ".78rem",
-                      }}
-                    >
-                      {b.booking_ref}
-                    </span>
-                  </td>
-                  {/* Removed user_id column */}
-                  <td>{b.guest_count}</td>
-                  <td>{b.check_in}</td>
-                  <td>{b.check_out}</td>
-                  <td>
-                    <span
-                      className="serif"
-                      style={{ color: C.primary, fontWeight: 700 }}
-                    >
-                      ₱{parseFloat(b.total_price || 0).toLocaleString()}
-                    </span>
-                  </td>
-                  <td>
-                    <Badge s={b.status} />
-                  </td>
-                  <td>
-                    <div style={{ display: "flex", gap: 5 }}>
-                      {b.status === "pending" && (
-                        <button
-                          onClick={() => handleStatusUpdate(b.id, "confirmed")}
-                          style={{
-                            background: "#DCFCE7",
-                            color: "#166534",
-                            border: "none",
-                            padding: "4px 9px",
-                            fontSize: ".65rem",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            borderRadius: 4,
-                          }}
-                        >
-                          ✓
-                        </button>
-                      )}
-                      {b.status !== "cancelled" && (
-                        <button
-                          onClick={() => handleStatusUpdate(b.id, "cancelled")}
-                          style={{
-                            background: "#FEE2E2",
-                            color: C.red,
-                            border: "none",
-                            padding: "4px 9px",
-                            fontSize: ".65rem",
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            borderRadius: 4,
-                          }}
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
+              {filteredBookings.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="7"
+                    style={{
+                      textAlign: "center",
+                      padding: "30px",
+                      color: C.gray,
+                    }}
+                  >
+                    No reservations match your filters.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredBookings.map((b) => (
+                  <tr key={b.id}>
+                    <td>
+                      <span
+                        className="sans"
+                        style={{
+                          color: C.secondary,
+                          fontWeight: 700,
+                          fontSize: ".78rem",
+                        }}
+                      >
+                        {b.booking_ref}
+                      </span>
+                    </td>
+                    <td>{b.guest_count}</td>
+                    <td>{b.check_in}</td>
+                    <td>{b.check_out}</td>
+                    <td>
+                      <span
+                        className="serif"
+                        style={{ color: C.primary, fontWeight: 700 }}
+                      >
+                        ₱{parseFloat(b.total_price || 0).toLocaleString()}
+                      </span>
+                    </td>
+                    <td>
+                      <Badge s={b.status} />
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", gap: 5 }}>
+                        {b.status === "pending" && (
+                          <button
+                            onClick={() =>
+                              handleStatusUpdate(b.id, "confirmed")
+                            }
+                            style={{
+                              background: "#DCFCE7",
+                              color: "#166534",
+                              border: "none",
+                              padding: "4px 9px",
+                              fontSize: ".65rem",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              borderRadius: 4,
+                            }}
+                          >
+                            ✓
+                          </button>
+                        )}
+                        {b.status !== "cancelled" && (
+                          <button
+                            onClick={() =>
+                              handleStatusUpdate(b.id, "cancelled")
+                            }
+                            style={{
+                              background: "#FEE2E2",
+                              color: C.red,
+                              border: "none",
+                              padding: "4px 9px",
+                              fontSize: ".65rem",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              borderRadius: 4,
+                            }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -999,18 +1239,35 @@ const ReservationsTab = ({ bookings, refreshData }) => {
   );
 };
 
-/* ── REPORTS TAB ── */
+/* ── REPORTS TAB (FIXED PDF GENERATION + DATE FILTER) ── */
 const ReportsTab = ({ bookings = [] }) => {
-  // Force all statuses to lowercase so React catches them regardless of how Django formats them
-  const completed = bookings.filter((b) => {
+  const [reportMonthFilter, setReportMonthFilter] = useState("all");
+  const [reportYearFilter, setReportYearFilter] = useState("all");
+  const filteredByDate = bookings.filter((b) => {
+    if (!b.check_in) return true;
+    const dateObj = new Date(b.check_in);
+    if (
+      reportMonthFilter !== "all" &&
+      dateObj.getMonth().toString() !== reportMonthFilter
+    )
+      return false;
+    if (
+      reportYearFilter !== "all" &&
+      dateObj.getFullYear().toString() !== reportYearFilter
+    )
+      return false;
+    return true;
+  });
+
+  const completed = filteredByDate.filter((b) => {
     const s = String(b.status || "").toLowerCase();
     return s === "completed" || s === "confirmed";
   });
 
-  const cancelled = bookings.filter(
+  const cancelled = filteredByDate.filter(
     (b) => String(b.status || "").toLowerCase() === "cancelled",
   );
-  const pending = bookings.filter(
+  const pending = filteredByDate.filter(
     (b) => String(b.status || "").toLowerCase() === "pending",
   );
 
@@ -1024,21 +1281,104 @@ const ReportsTab = ({ bookings = [] }) => {
   );
   const avgBooking = completed.length ? totalRev / completed.length : 0;
 
+  const handleExportPDF = () => {
+    window.print();
+  };
+
   return (
-    <div className="fi">
-      <div style={{ marginBottom: 22 }}>
-        <h2
-          className="serif"
-          style={{ color: C.primary, fontSize: "1.6rem", fontWeight: 600 }}
-        >
-          Sales Reports
-        </h2>
-        <p
-          className="sans"
-          style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
-        >
-          Real-time revenue and booking analytics
-        </p>
+    <div className="fi print-container">
+      {/* This CSS forces the browser to ignore your normal scroll layouts during print
+        so it doesn't print a blank page or cut off halfway!
+      */}
+      <style>{`
+        @media print {
+          body, html, #root { 
+            height: auto !important; 
+            overflow: visible !important; 
+            background: white !important;
+          }
+          nav, header, .sidebar, .hide-on-print { 
+            display: none !important; 
+          }
+          .print-container { 
+            position: absolute !important; 
+            left: 0 !important; 
+            top: 0 !important; 
+            width: 100% !important; 
+            padding: 20px !important; 
+            margin: 0 !important;
+          }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+        }
+      `}</style>
+
+      <div
+        className="hide-on-print"
+        style={{
+          marginBottom: 22,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+        }}
+      >
+        <div>
+          <h2
+            className="serif"
+            style={{ color: C.primary, fontSize: "1.6rem", fontWeight: 600 }}
+          >
+            Sales Reports
+          </h2>
+          <p
+            className="sans"
+            style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
+          >
+            Real-time revenue and booking analytics
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <select
+            className="inp"
+            style={{ padding: "8px 16px", minWidth: 120 }}
+            value={reportMonthFilter}
+            onChange={(e) => setReportMonthFilter(e.target.value)}
+          >
+            <option value="all">All Months</option>
+            <option value="0">January</option>
+            <option value="1">February</option>
+            <option value="2">March</option>
+            <option value="3">April</option>
+            <option value="4">May</option>
+            <option value="5">June</option>
+            <option value="6">July</option>
+            <option value="7">August</option>
+            <option value="8">September</option>
+            <option value="9">October</option>
+            <option value="10">November</option>
+            <option value="11">December</option>
+          </select>
+          <select
+            className="inp"
+            style={{ padding: "8px 16px", minWidth: 100 }}
+            value={reportYearFilter}
+            onChange={(e) => setReportYearFilter(e.target.value)}
+          >
+            <option value="all">All Years</option>
+            <option value="2024">2024</option>
+            <option value="2025">2025</option>
+            <option value="2026">2026</option>
+            <option value="2027">2027</option>
+          </select>
+          <button
+            className="btn-g"
+            onClick={handleExportPDF}
+            style={{ padding: "10px 20px" }}
+          >
+            Export as PDF
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -1222,25 +1562,188 @@ const ReportsTab = ({ bookings = [] }) => {
   );
 };
 
+/* ── USER MANAGEMENT TAB (WITH SEARCH) ── */
+const UsersTab = ({ usersList, refreshData }) => {
+  const [userSearchQuery, setUserSearchQuery] = useState("");
+
+  const filteredUsers = usersList.filter((u) => {
+    if (userSearchQuery === "") return true;
+    const fullName = `${u.first_name} ${u.last_name}`.toLowerCase();
+    return (
+      fullName.includes(userSearchQuery.toLowerCase()) ||
+      String(u.email || "")
+        .toLowerCase()
+        .includes(userSearchQuery.toLowerCase())
+    );
+  });
+  const handleDeleteUser = async (id) => {
+    if (
+      window.confirm("Are you sure you want to completely delete this user?")
+    ) {
+      try {
+        await usersService.delete(id);
+        refreshData();
+      } catch (err) {
+        alert("Failed to delete user.");
+      }
+    }
+  };
+
+  return (
+    <div className="fi">
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ marginBottom: 16 }}>
+          <h2
+            className="serif"
+            style={{ color: C.primary, fontSize: "1.6rem", fontWeight: 600 }}
+          >
+            User Management
+          </h2>
+          <p
+            className="sans"
+            style={{ color: C.gray, fontSize: ".85rem", marginTop: 4 }}
+          >
+            View and manage registered guest accounts
+          </p>
+        </div>
+        <input
+          type="text"
+          className="inp"
+          placeholder="Search by name or email..."
+          value={userSearchQuery}
+          onChange={(e) => setUserSearchQuery(e.target.value)}
+          style={{ padding: "8px 16px", minWidth: 200 }}
+        />
+      </div>
+
+      <div
+        style={{
+          background: C.neutral,
+          borderRadius: 12,
+          boxShadow: "0 2px 12px rgba(10,29,55,.07)",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ overflowX: "auto" }}>
+          <table className="tbl">
+            <thead>
+              <tr>
+                {["Name", "Email", "Phone Number", "Role", "Actions"].map(
+                  (h) => (
+                    <th key={h}>{h}</th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan="5"
+                    style={{
+                      textAlign: "center",
+                      padding: "30px",
+                      color: C.gray,
+                    }}
+                  >
+                    {userSearchQuery
+                      ? "No users match your search."
+                      : "No users found or endpoint is not active yet."}
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((u) => (
+                  <tr key={u.id}>
+                    <td>
+                      <span
+                        className="serif"
+                        style={{ color: C.primary, fontWeight: 600 }}
+                      >
+                        {u.first_name} {u.last_name}
+                      </span>
+                    </td>
+                    <td>{u.email}</td>
+                    <td>{u.phone_number || "N/A"}</td>
+                    <td>
+                      <span
+                        style={{
+                          background:
+                            u.is_staff || u.is_superuser
+                              ? "#FEF3C7"
+                              : "#F3F4F6",
+                          color:
+                            u.is_staff || u.is_superuser
+                              ? "#92400E"
+                              : "#374151",
+                          fontSize: ".65rem",
+                          fontWeight: 700,
+                          padding: "3px 9px",
+                          borderRadius: 4,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {u.is_superuser ? "Admin" : "Guest"}
+                      </span>
+                    </td>
+                    <td>
+                      {!u.is_superuser && (
+                        <button
+                          onClick={() => handleDeleteUser(u.id)}
+                          style={{
+                            background: "#FEE2E2",
+                            color: C.red,
+                            border: "none",
+                            padding: "6px 12px",
+                            fontSize: ".7rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            borderRadius: 4,
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ── MAIN COMPONENT ── */
 const AdminDash = ({ setPage }) => {
-  const { user } = useAuth(); // Hooks into global context
+  const { user } = useAuth();
   const [tab, setTab] = useState("overview");
   const [modal, setModal] = useState(null);
 
   const [rooms, setRooms] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [usersList, setUsersList] = useState([]);
+  const [amenities, setAmenities] = useState([]);
+  const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [roomsData, bookingsData] = await Promise.all([
-        roomsService.list(),
-        bookingsService.list(), // <--- CHANGED FROM getAll() TO list()
-      ]);
+      const [roomsData, bookingsData, usersData, amenitiesData, policiesData] =
+        await Promise.all([
+          roomsService.list(),
+          bookingsService.list(),
+          usersService.list(),
+          roomsService.getAmenities(),
+          roomsService.getPolicies(),
+        ]);
       setRooms(roomsData.results || roomsData);
       setBookings(bookingsData.results || bookingsData);
+      setUsersList(usersData.results || usersData || []);
+      setAmenities(amenitiesData.results || amenitiesData || []);
+      setPolicies(policiesData.results || policiesData || []);
     } catch (error) {
       console.error("Error loading admin dashboard:", error);
     } finally {
@@ -1269,6 +1772,8 @@ const AdminDash = ({ setPage }) => {
           room={modal === "add" ? null : modal}
           onClose={() => setModal(null)}
           refreshData={fetchDashboardData}
+          amenities={amenities}
+          policies={policies}
         />
       )}
       <Shell
@@ -1302,6 +1807,10 @@ const AdminDash = ({ setPage }) => {
           />
         )}
         {tab === "reports" && <ReportsTab bookings={bookings} />}
+
+        {tab === "users" && (
+          <UsersTab usersList={usersList} refreshData={fetchDashboardData} />
+        )}
       </Shell>
     </>
   );
