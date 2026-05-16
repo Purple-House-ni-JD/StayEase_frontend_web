@@ -32,4 +32,7 @@ export const bookingsService = {
   // body: { status: 'confirmed' | 'cancelled' | 'completed' }
   updateStatus: (id, status) =>
     api.patch(`/bookings/${id}/status/`, { status }),
+
+  extendStay: (id, check_in, check_out) =>
+    api.patch(`/bookings/${id}/extend/`, { check_in, check_out }),
 };
