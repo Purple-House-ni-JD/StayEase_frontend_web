@@ -220,12 +220,20 @@ const CalendarWidget = ({
 
           let bg = "transparent";
           let color = C.text;
+          let backgroundImage = "none";
+
           if (status === "conflict" || status === "full") {
             bg = "#FEE2E2";
             color = C.red;
+            // Add diagonal stripes for booked/conflict
+            backgroundImage =
+              "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(239,68,68,.2) 10px, rgba(239,68,68,.2) 20px)";
           } else if (status === "partial") {
             bg = "#FEF3C7";
             color = "#92400E";
+            // Add diagonal stripes for partially booked
+            backgroundImage =
+              "repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(180,83,9,.15) 10px, rgba(180,83,9,.15) 20px)";
           } else if (status === "free") {
             bg = "#DCFCE7";
             color = "#166534";
@@ -242,21 +250,46 @@ const CalendarWidget = ({
                 height: 36,
                 borderRadius: 8,
                 background: bg,
+                backgroundImage: backgroundImage,
                 color: color,
                 fontSize: ".85rem",
                 fontWeight: 600,
                 cursor: "pointer",
                 border: "1px solid transparent",
                 transition: "all 0.2s",
+                position: "relative",
               }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.border = `1px solid ${C.gray}`)
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.border = `1px solid transparent`)
+              onMouseEnter={(e) => {
+                e.currentTarget.style.border = `1px solid ${C.gray}`;
+                if (dayBookings.length > 0) {
+                  e.currentTarget.style.opacity = "0.85";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.border = `1px solid transparent`;
+                e.currentTarget.style.opacity = "1";
+              }}
+              title={
+                dayBookings.length > 0
+                  ? `${dayBookings.length} booking(s)`
+                  : "Available"
               }
             >
               {day}
+              {dayBookings.length > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: 2,
+                    right: 2,
+                    fontSize: ".5rem",
+                    fontWeight: 700,
+                    opacity: 0.7,
+                  }}
+                >
+                  ✕
+                </span>
+              )}
             </div>
           );
         })}
@@ -1839,12 +1872,141 @@ const RoomsTab = ({ setModal, rooms, refreshData }) => {
   );
 };
 
+/* ── EDIT STAY MODAL ── */
+const EditStayModal = ({ booking, onClose, refreshData }) => {
+  const [checkIn, setCheckIn] = useState(booking.check_in);
+  const [checkOut, setCheckOut] = useState(booking.check_out);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      await bookingsService.extendStay(booking.id, checkIn, checkOut);
+      alert("Dates and price updated successfully!");
+      refreshData();
+      onClose();
+    } catch (err) {
+      console.error("Extend stay error:", err);
+      const data = err?.response?.data || err;
+      setError(
+        data?.detail || "Failed to update stay. Check for date conflicts.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="mbg"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        style={{
+          background: C.neutral,
+          borderRadius: 14,
+          padding: "32px",
+          width: 400,
+        }}
+      >
+        <h3
+          className="serif"
+          style={{
+            color: C.primary,
+            fontSize: "1.4rem",
+            fontWeight: 600,
+            marginBottom: 20,
+          }}
+        >
+          Edit Stay Dates
+        </h3>
+
+        <p
+          className="sans"
+          style={{ fontSize: ".85rem", color: C.gray, marginBottom: 20 }}
+        >
+          Ref:{" "}
+          <strong style={{ color: C.secondary }}>{booking.booking_ref}</strong>
+          <br />
+          Current Total: ₱{parseFloat(booking.total_price).toLocaleString()}
+        </p>
+
+        {error && (
+          <div
+            style={{
+              background: "#FEE2E2",
+              color: C.red,
+              padding: 12,
+              borderRadius: 8,
+              fontSize: ".8rem",
+              marginBottom: 16,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            marginBottom: 24,
+          }}
+        >
+          <div>
+            <label className="lbl">Check-in Date</label>
+            <input
+              type="date"
+              className="inp"
+              value={checkIn}
+              onChange={(e) => setCheckIn(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="lbl">Check-out Date</label>
+            <input
+              type="date"
+              className="inp"
+              value={checkOut}
+              onChange={(e) => setCheckOut(e.target.value)}
+              min={checkIn}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            className="btn-p"
+            style={{ flex: 1, padding: "12px" }}
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? "Updating..." : "Update Dates"}
+          </button>
+          <button
+            className="btn-o"
+            style={{ flex: 1, padding: "12px" }}
+            onClick={onClose}
+            disabled={loading}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ── RESERVATIONS TAB ── */
 const ReservationsTab = ({ bookings, refreshData }) => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [monthFilter, setMonthFilter] = useState("all");
   const [yearFilter, setYearFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [editingBooking, setEditingBooking] = useState(null);
 
   const handleStatusUpdate = async (id, newStatus) => {
     // Added a confirmation prompt so admins don't accidentally click the wrong button
@@ -1891,6 +2053,13 @@ const ReservationsTab = ({ bookings, refreshData }) => {
 
   return (
     <div className="fi">
+      {editingBooking && (
+        <EditStayModal
+          booking={editingBooking}
+          onClose={() => setEditingBooking(null)}
+          refreshData={refreshData}
+        />
+      )}
       <div
         style={{
           marginBottom: 22,
@@ -2108,6 +2277,22 @@ const ReservationsTab = ({ bookings, refreshData }) => {
                       <div
                         style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
                       >
+                        <button
+                          onClick={() => setEditingBooking(b)}
+                          style={{
+                            background: "#E0F2FE",
+                            color: "#0369A1",
+                            border: "none",
+                            padding: "6px 12px",
+                            fontSize: ".65rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            borderRadius: 6,
+                          }}
+                          title="Edit check-in/check-out dates"
+                        >
+                          Edit Dates
+                        </button>
                         {b.status === "pending" && (
                           <>
                             <button
@@ -2183,19 +2368,6 @@ const ReservationsTab = ({ bookings, refreshData }) => {
                               Cancel
                             </button>
                           </>
-                        )}
-                        {(b.status === "completed" ||
-                          b.status === "cancelled") && (
-                          <span
-                            className="sans"
-                            style={{
-                              fontSize: ".7rem",
-                              color: C.grayL,
-                              padding: "6px 0",
-                            }}
-                          >
-                            Terminal State
-                          </span>
                         )}
                       </div>
                     </td>
